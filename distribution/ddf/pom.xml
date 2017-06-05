@@ -151,6 +151,77 @@
                             <overWriteSnapshots>true</overWriteSnapshots>
                         </configuration>
                     </execution>
+		    <execution>
+                      <id>copy-solr-dist</id>
+                        <!--
+                        The unpack needs to run in an earlier phase than the copy,
+                        due to a recurring bug in maven that causes plugins in the
+                        same lifecycle phase to run in orders other than that which
+                        they were declared in.
+
+                        See https://issues.apache.org/jira/browse/MNG-5799 as well
+                        as the related tickets for more details.
+                        -->
+                      <phase>process-resources</phase>
+                      <goals>
+			<goal>unpack</goal>
+                      </goals>
+                      <configuration>
+			<artifactItems>
+                          <artifactItem>
+                            <groupId>org.apache.solr</groupId>
+                            <artifactId>solr-dist</artifactId>
+                            <version>${solr.version}</version>
+			    <excludes>**/configsets/**,**/example/**,**/docs/**</excludes>
+                            <outputDirectory>${setup.folder}</outputDirectory>
+                            <overWrite>true</overWrite>
+                            <type>zip</type>
+                          </artifactItem>
+			</artifactItems>
+			<overWriteSnapshots>true</overWriteSnapshots>
+                      </configuration>
+		    </execution>
+		    <execution>
+                      <id>copy-solr-dependencies</id>
+                        <!--
+                        The unpack needs to run in an earlier phase than the copy,
+                        due to a recurring bug in maven that causes plugins in the
+                        same lifecycle phase to run in orders other than that which
+                        they were declared in.
+
+                        See https://issues.apache.org/jira/browse/MNG-5799 as well
+                        as the related tickets for more details.
+                        -->
+                      <phase>process-resources</phase>
+                      <goals>
+			<goal>copy</goal>
+                      </goals>
+                      <configuration>
+			<artifactItems>
+                          <!-- Needed for XPath query parser and filter -->
+                          <artifactItem>
+                            <groupId>ddf.platform.solr</groupId>
+                            <artifactId>solr-xpath</artifactId>
+                            <version>${project.version}</version>
+                            <type>jar</type>
+                            <overWrite>true</overWrite>
+                            <outputDirectory>
+                              ${setup.folder}/solr-${solr.version}/server/solr-webapp/webapp/WEB-INF/lib
+                            </outputDirectory>
+                          </artifactItem>
+                          <artifactItem>
+                            <groupId>ddf.platform.solr</groupId>
+                            <artifactId>solr-dependencies</artifactId>
+                            <version>${project.version}</version>
+                            <type>jar</type>
+                            <overWrite>true</overWrite>
+                            <outputDirectory>
+			      ${setup.folder}/solr-${solr.version}/server/solr-webapp/webapp/WEB-INF/lib
+                            </outputDirectory>
+                          </artifactItem>
+                        </artifactItems>
+                      </configuration>
+                    </execution>
                 </executions>
             </plugin>
         </plugins>
@@ -247,7 +318,7 @@
                                         </artifactItem>
                                     </artifactItems>
                                 </configuration>
-                            </execution>
+                            </execution>			    
                         </executions>
                     </plugin>
                 </plugins>

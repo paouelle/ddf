@@ -134,6 +134,12 @@
             <outputDirectory>/documentation/javadoc/encryption_api_javadoc</outputDirectory>
         </fileSet>
 
+        <!-- Solr -->
+        <fileSet>
+            <directory>${setup.folder}/solr-${solr.version}</directory>
+            <outputDirectory>/solr</outputDirectory>
+        </fileSet>
+	
         <!-- Console Branding -->
         <fileSet>
             <directory>${setup.folder}</directory>
