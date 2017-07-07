@@ -18,7 +18,7 @@
            xmlns:ext="http://aries.apache.org/blueprint/xmlns/blueprint-ext/v1.0.0">
     <ext:property-placeholder/>
 
-    <reference id="configurationAdmin" interface="org.osgi.service.cm.ConfigurationAdmin"/>
+    <reference id="configurationRepo" interface="org.apache.karaf.config.core.ConfigRepository"/>
 
     <bean id="propertiesFileSupport"
           class="org.codice.ddf.platform.util.properties.PropertiesFileReader"/>
@@ -37,7 +37,7 @@
     </bean>
 
     <bean id="configurationAdminImpl" class="org.codice.ddf.admin.core.impl.ConfigurationAdminImpl">
-        <argument ref="configurationAdmin"/>
+        <argument ref="configurationRepo"/>
         <argument ref="configurationAdminPluginList"/>
     </bean>
 
@@ -47,7 +47,7 @@
           init-method="init" destroy-method="destroy">
         <cm:managed-properties persistent-id="ddf.ui.admin.api"
                                update-strategy="container-managed"/>
-        <argument ref="configurationAdmin"/>
+        <argument ref="configurationRepo"/>
         <argument ref="configurationAdminImpl"/>
         <property name="moduleList" ref="moduleList"/>
         <property name="guestClaimsHandlerExt" ref="guestClaimsHandlerExt"/>

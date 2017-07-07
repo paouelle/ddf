@@ -31,6 +31,7 @@ import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.karaf.config.core.ConfigRepository;
 import org.apache.shiro.SecurityUtils;
 import org.apache.shiro.subject.Subject;
 import org.codice.ddf.admin.core.api.ConfigurationDetails;
@@ -48,7 +49,6 @@ import org.osgi.framework.FrameworkUtil;
 import org.osgi.framework.InvalidSyntaxException;
 import org.osgi.framework.ServiceReference;
 import org.osgi.service.cm.Configuration;
-import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.service.cm.ManagedService;
 import org.osgi.service.cm.ManagedServiceFactory;
 import org.osgi.service.metatype.AttributeDefinition;
@@ -82,19 +82,19 @@ public class ConfigurationAdminImpl implements org.codice.ddf.admin.core.api.Con
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ConfigurationAdminImpl.class);
 
-    private final ConfigurationAdmin configurationAdmin;
+    private final ConfigRepository configurationRepo;
 
     private final Map<String, ServiceTracker> services = new HashMap<String, ServiceTracker>();
 
     private List<ConfigurationAdminPlugin> configurationAdminPluginList;
 
     /**
-     * @param configurationAdmin
+     * @param configurationRepo
      * @throws ClassCastException if {@code service} is not a MetaTypeService instances
      */
-    public ConfigurationAdminImpl(final Object configurationAdmin,
+    public ConfigurationAdminImpl(final Object configurationRepo,
             List<ConfigurationAdminPlugin> configurationAdminPluginList) {
-        this.configurationAdmin = (ConfigurationAdmin) configurationAdmin;
+        this.configurationRepo = (ConfigRepository) configurationRepo;
         this.configurationAdminPluginList = configurationAdminPluginList;
     }
 
@@ -128,7 +128,7 @@ public class ConfigurationAdminImpl implements org.codice.ddf.admin.core.api.Con
                 // objects persistently without the user providing actual
                 // configuration
                 String filter = '(' + SERVICE_PID + '=' + pid + ')';
-                Configuration[] configs = this.configurationAdmin.listConfigurations(filter);
+                Configuration[] configs = this.configurationRepo.getConfigAdmin().listConfigurations(filter);
                 if (configs != null && configs.length > 0 && isPermittedToViewService(pid)) {
                     return configs[0];
                 }
@@ -198,7 +198,7 @@ public class ConfigurationAdminImpl implements org.codice.ddf.admin.core.api.Con
                     }
                 }
 
-                Configuration[] configs = configurationAdmin.listConfigurations(
+                Configuration[] configs = configurationRepo.getConfigAdmin().listConfigurations(
                         "(|(service.factoryPid=" + service.getId() + ")(service.factoryPid="
                                 + service.getId() + "_disabled))");
                 if (configs != null) {
@@ -216,7 +216,7 @@ public class ConfigurationAdminImpl implements org.codice.ddf.admin.core.api.Con
                     }
                 }
 
-                Configuration[] configs = configurationAdmin.listConfigurations(
+                Configuration[] configs = configurationRepo.getConfigAdmin().listConfigurations(
                         "(" + SERVICE_PID + "=" + service.getId() + ")");
                 if (configs != null) {
                     addConfigurationData(service, configs);
@@ -684,15 +684,19 @@ public class ConfigurationAdminImpl implements org.codice.ddf.admin.core.api.Con
                 originalFactoryPid + ConfigurationStatus.DISABLED_EXTENSION;
         properties.put(org.osgi.service.cm.ConfigurationAdmin.SERVICE_FACTORYPID,
                 disabledServiceFactoryPid);
-        Configuration disabledConfig = configurationAdmin.createFactoryConfiguration(
-                disabledServiceFactoryPid,
-                null);
-        disabledConfig.update(properties);
+        String disabledConfigPid = configurationRepo.createFactoryConfiguration(
+                disabledServiceFactoryPid, properties);
 
         // remove original configuration
-        originalConfig.delete();
+        try {
+            configurationRepo.delete(originalConfig.getPid());
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
         return new ConfigurationStatusImpl(disabledServiceFactoryPid,
-                disabledConfig.getPid(),
+                disabledConfigPid,
                 originalFactoryPid,
                 servicePid);
     }
@@ -713,15 +717,20 @@ public class ConfigurationAdminImpl implements org.codice.ddf.admin.core.api.Con
                 ConfigurationStatus.DISABLED_EXTENSION);
         properties.put(org.osgi.service.cm.ConfigurationAdmin.SERVICE_FACTORYPID,
                 enabledFactoryPid);
-        Configuration enabledConfiguration = configurationAdmin.createFactoryConfiguration(
+        String enabledConfigurationPid = configurationRepo.createFactoryConfiguration(
                 enabledFactoryPid,
-                null);
-        enabledConfiguration.update(properties);
+                properties);
 
-        disabledConfig.delete();
+        try {
+            configurationRepo.delete(disabledConfig.getPid());
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
 
         return new ConfigurationStatusImpl(enabledFactoryPid,
-                enabledConfiguration.getPid(),
+                enabledConfigurationPid,
                 disabledFactoryPid,
                 servicePid);
     }

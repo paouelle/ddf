@@ -69,7 +69,7 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AdminConsoleService.class);
 
-    private final org.osgi.service.cm.ConfigurationAdmin configurationAdmin;
+    private final org.apache.karaf.config.core.ConfigRepository configurationRepo;
 
     private final ConfigurationAdmin configurationAdminImpl;
 
@@ -84,14 +84,20 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
     /**
      * Constructor for use in unit tests. Needed for testing listServices() and getService().
      *
-     * @param configurationAdmin     instance of org.osgi.service.cm.ConfigurationAdmin service
+     * @param configurationRepo      instance of org.apache.karaf.config.core.ConfigRepository service
      * @param configurationAdminImpl mocked instance of ConfigurationAdminImpl
      */
-    public AdminConsoleService(org.osgi.service.cm.ConfigurationAdmin configurationAdmin,
+    public AdminConsoleService(org.apache.karaf.config.core.ConfigRepository configurationRepo,
             ConfigurationAdmin configurationAdminImpl) throws NotCompliantMBeanException {
         super(AdminConsoleServiceMBean.class);
-        this.configurationAdmin = configurationAdmin;
+        this.configurationRepo = configurationRepo;
         this.configurationAdminImpl = configurationAdminImpl;
+    }
+
+    private static IllegalArgumentException loggedException(String message) {
+        IllegalArgumentException exception = new IllegalArgumentException(message);
+        LOGGER.info(message, exception);
+        return exception;
     }
 
     /**
@@ -197,7 +203,10 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
         }
 
         if (isPermittedToViewService(factoryPid)) {
-            Configuration config = configurationAdmin.createFactoryConfiguration(factoryPid);
+            String configPid = configurationRepo.createFactoryConfiguration(factoryPid, new Hashtable<>(1));
+            Configuration config = configurationRepo.getConfigAdmin()
+                    .getConfiguration(configPid);
+
             config.setBundleLocation(location);
             return config.getPid();
         }
@@ -221,8 +230,13 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
         }
 
         if (isPermittedToViewService(pid)) {
-            Configuration config = configurationAdmin.getConfiguration(pid, location);
-            config.delete();
+            try {
+                configurationRepo.delete(pid);
+            } catch (IOException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IOException(e);
+            }
         }
     }
 
@@ -235,13 +249,20 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
         }
         Configuration[] configuations;
         try {
-            configuations = configurationAdmin.listConfigurations(filter);
+            configuations = configurationRepo.getConfigAdmin()
+                    .listConfigurations(filter);
         } catch (InvalidSyntaxException e) {
             throw new IOException("Invalid filter [" + filter + "] : " + e);
         }
         if (configuations != null) {
             for (Configuration config : configuations) {
-                config.delete();
+                try {
+                    configurationRepo.delete(config.getPid());
+                } catch (IOException e) {
+                    throw e;
+                } catch (Exception e) {
+                    throw new IOException(e);
+                }
             }
         }
     }
@@ -253,7 +274,8 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
         if (StringUtils.isBlank(pid)) {
             throw new IOException("Argument pid cannot be null or empty");
         }
-        Configuration config = configurationAdmin.getConfiguration(pid, null);
+        Configuration config = configurationRepo.getConfigAdmin()
+                .getConfiguration(pid, null);
         return (config.getBundleLocation() == null) ?
                 "Configuration is not yet bound to a bundle location" :
                 config.getBundleLocation();
@@ -269,7 +291,8 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
         List<String[]> result = new ArrayList<>();
         Configuration[] configurations;
         try {
-            configurations = configurationAdmin.listConfigurations(filter);
+            configurations = configurationRepo.getConfigAdmin()
+                    .listConfigurations(filter);
         } catch (InvalidSyntaxException e) {
             throw new IOException("Invalid filter [" + filter + "] : " + e);
         }
@@ -297,7 +320,8 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
         if (pid == null || pid.length() < 1) {
             throw new IOException("Argument pid cannot be null or empty");
         }
-        Configuration config = configurationAdmin.getConfiguration(pid, location);
+        Configuration config = configurationRepo.getConfigAdmin()
+                .getConfiguration(pid, location);
         return config.getFactoryPid();
     }
 
@@ -317,7 +341,8 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
             throw new IOException("Argument pid cannot be null or empty");
         }
         Map<String, Object> propertiesTable = new HashMap<>();
-        Configuration config = configurationAdmin.getConfiguration(pid, location);
+        Configuration config = configurationRepo.getConfigAdmin()
+                .getConfiguration(pid, location);
 
         if (isPermittedToViewService(config.getPid())) {
             Dictionary<String, Object> properties = config.getProperties();
@@ -339,7 +364,8 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
         if (pid == null || pid.length() < 1) {
             throw new IOException("Argument factoryPid cannot be null or empty");
         }
-        Configuration config = configurationAdmin.getConfiguration(pid, null);
+        Configuration config = configurationRepo.getConfigAdmin()
+                .getConfiguration(pid, null);
         config.setBundleLocation(location);
     }
 
@@ -388,6 +414,8 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
         return true;
     }
 
+    private static final String FILEINSTALL_FILE_NAME = "felix.fileinstall.filename";
+
     /**
      * @see AdminConsoleServiceMBean#updateForLocation(java.lang.String, java.lang.String, java.util.Map)
      */
@@ -400,9 +428,9 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
             throw loggedException("Argument configurationTable cannot be null");
         }
 
-        Configuration config = configurationAdmin.getConfiguration(pid, location);
-
-        if (isPermittedToViewService(config.getPid())) {
+        if (isPermittedToViewService(pid)) {
+            Configuration config = configurationRepo.getConfigAdmin()
+                    .getConfiguration(pid, location);
             final Metatype metatype = configurationAdminImpl.findMetatypeForConfig(config);
             List<Map.Entry<String, Object>> configEntries = new ArrayList<>();
 
@@ -418,6 +446,7 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
                     new CardinalityTransformer(metatype.getAttributeDefinitions(), pid));
 
             Dictionary<String, Object> newConfigProperties = new Hashtable<>();
+            Dictionary<String, Object> configProperties = config.getProperties();
 
             // If the configuration entry is a password, and its updated configuration value is
             // "password", do not update the password.
@@ -430,7 +459,6 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
                                 .equals(configEntry.getKey())
                                 && AttributeDefinition.PASSWORD == (Integer) metatypeProperties.get(
                                 "type")) {
-                            Dictionary<String, Object> configProperties = config.getProperties();
                             if (configProperties != null) {
                                 configEntryValue = configProperties.get(configEntryKey);
                             }
@@ -441,7 +469,18 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
                 newConfigProperties.put(configEntryKey, configEntryValue);
             }
 
-            config.update(newConfigProperties);
+            // preserve the felix install file from the old config object if none specified
+            // this will account for managed service creation where the admin UI doesn't return
+            // any system install properties along with the new properties defined
+            if (newConfigProperties.get(FILEINSTALL_FILE_NAME) == null) {
+                final Object fname = (configProperties != null) ? configProperties.get(
+                        FILEINSTALL_FILE_NAME) : null;
+
+                if (fname != null) {
+                    newConfigProperties.put(FILEINSTALL_FILE_NAME, fname);
+                }
+            }
+            configurationRepo.update(pid, newConfigProperties);
         }
     }
 
@@ -502,6 +541,73 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
      */
     void setMBeanServer(MBeanServer server) {
         mBeanServer = server;
+    }
+
+    public void setGuestClaimsHandlerExt(GuestClaimsHandlerExt guestClaimsHandlerExt) {
+        this.guestClaimsHandlerExt = guestClaimsHandlerExt;
+    }
+
+    public boolean isPermittedToViewService(String servicePid) {
+        return configurationAdminImpl.isPermittedToViewService(servicePid,
+                SecurityUtils.getSubject());
+    }
+
+    private void comprehensiveUpdate(String pid, Map<String, Object> configurationTable) {
+        try {
+            Map<String, Object> existingConfig = this.getProperties(pid);
+            if (configurationTable == null || configurationTable.isEmpty()) {
+                return;
+            }
+            existingConfig.putAll(configurationTable);
+            this.update(pid, existingConfig);
+        } catch (IOException e) {
+            LOGGER.debug("Exception while updating configs: ", e);
+        }
+    }
+
+    // felix won't take Object[] or Vector<Object>, so here we
+    // map all the osgi constants to strongly typed arrays/vectors
+    enum TYPE {
+        STRING(AttributeDefinition.STRING, String.class) {
+        }, LONG(AttributeDefinition.LONG, Long.class) {
+        }, INTEGER(AttributeDefinition.INTEGER, Integer.class) {
+        }, SHORT(AttributeDefinition.SHORT, Short.class) {
+        }, CHARACTER(AttributeDefinition.CHARACTER, Character.class) {
+        }, BYTE(AttributeDefinition.BYTE, Byte.class) {
+        }, DOUBLE(AttributeDefinition.DOUBLE, Double.class) {
+        }, FLOAT(AttributeDefinition.FLOAT, Float.class) {
+        }, BIGINTEGER(AttributeDefinition.BIGINTEGER, BigInteger.class) {
+        }, BIGDECIMAL(AttributeDefinition.BIGDECIMAL, BigDecimal.class) {
+        }, BOOLEAN(AttributeDefinition.BOOLEAN, Boolean.class) {
+        }, PASSWORD(AttributeDefinition.PASSWORD, String.class) {
+        };
+
+        private final int type;
+
+        private final Class clazz;
+
+        TYPE(int type, Class clazz) {
+            this.type = type;
+            this.clazz = clazz;
+        }
+
+        public static TYPE forType(int type) {
+            for (TYPE theType : TYPE.values()) {
+                if (theType.getType() == type) {
+                    return theType;
+                }
+            }
+            return STRING;
+        }
+
+        @SuppressWarnings("unchecked")
+        public CardinalityEnforcer getCardinalityEnforcer() {
+            return new CardinalityEnforcer(clazz);
+        }
+
+        public int getType() {
+            return type;
+        }
     }
 
     private static class CardinalityTransformer implements Transformer {
@@ -618,79 +724,6 @@ public class AdminConsoleService extends StandardMBean implements AdminConsoleSe
                 return clazz.cast(value);
             }
             throw loggedException("Failed to parse " + value + " as " + clazz);
-        }
-    }
-
-    private static IllegalArgumentException loggedException(String message) {
-        IllegalArgumentException exception = new IllegalArgumentException(message);
-        LOGGER.info(message, exception);
-        return exception;
-    }
-
-    // felix won't take Object[] or Vector<Object>, so here we
-    // map all the osgi constants to strongly typed arrays/vectors
-    enum TYPE {
-        STRING(AttributeDefinition.STRING, String.class) {
-        }, LONG(AttributeDefinition.LONG, Long.class) {
-        }, INTEGER(AttributeDefinition.INTEGER, Integer.class) {
-        }, SHORT(AttributeDefinition.SHORT, Short.class) {
-        }, CHARACTER(AttributeDefinition.CHARACTER, Character.class) {
-        }, BYTE(AttributeDefinition.BYTE, Byte.class) {
-        }, DOUBLE(AttributeDefinition.DOUBLE, Double.class) {
-        }, FLOAT(AttributeDefinition.FLOAT, Float.class) {
-        }, BIGINTEGER(AttributeDefinition.BIGINTEGER, BigInteger.class) {
-        }, BIGDECIMAL(AttributeDefinition.BIGDECIMAL, BigDecimal.class) {
-        }, BOOLEAN(AttributeDefinition.BOOLEAN, Boolean.class) {
-        }, PASSWORD(AttributeDefinition.PASSWORD, String.class) {
-        };
-
-        private final int type;
-
-        private final Class clazz;
-
-        TYPE(int type, Class clazz) {
-            this.type = type;
-            this.clazz = clazz;
-        }
-
-        @SuppressWarnings("unchecked")
-        public CardinalityEnforcer getCardinalityEnforcer() {
-            return new CardinalityEnforcer(clazz);
-        }
-
-        public int getType() {
-            return type;
-        }
-
-        public static TYPE forType(int type) {
-            for (TYPE theType : TYPE.values()) {
-                if (theType.getType() == type) {
-                    return theType;
-                }
-            }
-            return STRING;
-        }
-    }
-
-    public void setGuestClaimsHandlerExt(GuestClaimsHandlerExt guestClaimsHandlerExt) {
-        this.guestClaimsHandlerExt = guestClaimsHandlerExt;
-    }
-
-    public boolean isPermittedToViewService(String servicePid) {
-        return configurationAdminImpl.isPermittedToViewService(servicePid,
-                SecurityUtils.getSubject());
-    }
-
-    private void comprehensiveUpdate(String pid, Map<String, Object> configurationTable) {
-        try {
-            Map<String, Object> existingConfig = this.getProperties(pid);
-            if (configurationTable == null || configurationTable.isEmpty()) {
-                return;
-            }
-            existingConfig.putAll(configurationTable);
-            this.update(pid, existingConfig);
-        } catch (IOException e) {
-            LOGGER.debug("Exception while updating configs: ", e);
         }
     }
 }

@@ -111,9 +111,6 @@ public class AdminConsoleServiceTest {
 
     private static final String PROFILE_KEY = "profile";
 
-    @Mock
-    private GuestClaimsHandlerExt mockGuestClaimsHandlerExt;
-
     private static final org.osgi.service.cm.ConfigurationAdmin CONFIGURATION_ADMIN =
             mock(org.osgi.service.cm.ConfigurationAdmin.class);
 
@@ -132,6 +129,9 @@ public class AdminConsoleServiceTest {
 
     private static ConfigurationAdminImpl configurationAdminImpl;
 
+    @Mock
+    private GuestClaimsHandlerExt mockGuestClaimsHandlerExt;
+
     private AdminConsoleService configAdmin;
 
     private MBeanServer testServer;
@@ -139,10 +139,9 @@ public class AdminConsoleServiceTest {
     @Before
     public void setupMethod() throws NotCompliantMBeanException {
         testConfig = mock(Configuration.class);
-        org.osgi.service.cm.ConfigurationAdmin testConfigAdmin =
-                mock(org.osgi.service.cm.ConfigurationAdmin.class);
-
-        configurationAdminImpl = new ConfigurationAdminImpl(testConfigAdmin, new ArrayList<>()) {
+        org.apache.karaf.config.core.ConfigRepository testConfigRepo =
+                mock(org.apache.karaf.config.core.ConfigRepository.class);
+        configurationAdminImpl = new ConfigurationAdminImpl(testConfigRepo, new ArrayList<>()) {
             @Override
             public boolean isPermittedToViewService(String servicePid) {
                 return true;
@@ -154,8 +153,7 @@ public class AdminConsoleServiceTest {
             }
         };
 
-        configAdmin = new AdminConsoleService(testConfigAdmin,
-                configurationAdminImpl) {
+        configAdmin = new AdminConsoleService(testConfigRepo, configurationAdminImpl) {
             @Override
             public boolean isPermittedToViewService(String servicePid) {
                 return true;
@@ -176,7 +174,7 @@ public class AdminConsoleServiceTest {
     }
 
     /**
-     * Tests the {@link AdminConsoleService#AdminConsoleService(org.osgi.service.cm.ConfigurationAdmin, org.codice.ddf.admin.core.api.ConfigurationAdmin)}
+     * Tests the {@link AdminConsoleService#AdminConsoleService(org.apache.karaf.config.core.ConfigRepository, org.codice.ddf.admin.core.api.ConfigurationAdmin)}
      * constructor and the {@link AdminConsoleService#init()} method
      *
      * @throws Exception
@@ -278,10 +276,10 @@ public class AdminConsoleServiceTest {
      */
     @Test
     public void testListServices() throws Exception {
-        org.osgi.service.cm.ConfigurationAdmin testConfigAdmin =
-                mock(org.osgi.service.cm.ConfigurationAdmin.class);
+        org.apache.karaf.config.core.ConfigRepository testConfigRepo =
+                mock(org.apache.karaf.config.core.ConfigRepository.class);
         ConfigurationAdminImpl testConfigAdminExt = mock(ConfigurationAdminImpl.class);
-        AdminConsoleService configAdmin = new AdminConsoleService(testConfigAdmin,
+        AdminConsoleService configAdmin = new AdminConsoleService(testConfigRepo,
                 testConfigAdminExt) {
             @Override
             public boolean isPermittedToViewService(String servicePid) {
@@ -316,8 +314,9 @@ public class AdminConsoleServiceTest {
 
         List<Map<String, Object>> result = configAdmin.listModules();
 
-        assertThat("Should return the provided modules.", result.get(0)
-                .get("name"),
+        assertThat("Should return the provided modules.",
+                result.get(0)
+                        .get("name"),
                 is(TEST_MODULE_1));
     }
 
@@ -350,8 +349,9 @@ public class AdminConsoleServiceTest {
 
         List<Map<String, Object>> result = configAdmin.listModules();
 
-        assertThat("Should return the provided modules.", result.get(0)
-                .get("name"),
+        assertThat("Should return the provided modules.",
+                result.get(0)
+                        .get("name"),
                 is(TEST_MODULE_1));
         assertThat("jsLocation should be assigned some value.",
                 result.get(0)
@@ -366,10 +366,10 @@ public class AdminConsoleServiceTest {
      */
     @Test
     public void testGetService() throws Exception {
-        org.osgi.service.cm.ConfigurationAdmin testConfigAdmin =
-                mock(org.osgi.service.cm.ConfigurationAdmin.class);
+        org.apache.karaf.config.core.ConfigRepository testConfigRepo =
+                mock(org.apache.karaf.config.core.ConfigRepository.class);
         ConfigurationAdminImpl testConfigAdminExt = mock(ConfigurationAdminImpl.class);
-        AdminConsoleService configAdmin = new AdminConsoleService(testConfigAdmin,
+        AdminConsoleService configAdmin = new AdminConsoleService(testConfigRepo,
                 testConfigAdminExt) {
             @Override
             public boolean isPermittedToViewService(String servicePid) {
@@ -397,9 +397,9 @@ public class AdminConsoleServiceTest {
      */
     @Test
     public void testCreateFactoryConfiguration() throws Exception {
-        org.osgi.service.cm.ConfigurationAdmin testConfigAdmin =
-                mock(org.osgi.service.cm.ConfigurationAdmin.class);
-        AdminConsoleService configAdmin = new AdminConsoleService(testConfigAdmin,
+        org.apache.karaf.config.core.ConfigRepository testConfigRepo =
+                mock(org.apache.karaf.config.core.ConfigRepository.class);
+        AdminConsoleService configAdmin = new AdminConsoleService(testConfigRepo,
                 configurationAdminImpl) {
             @Override
             public boolean isPermittedToViewService(String servicePid) {
@@ -407,14 +407,13 @@ public class AdminConsoleServiceTest {
             }
         };
 
-        Configuration testConfig = mock(Configuration.class);
-        when(testConfig.getPid()).thenReturn(TEST_PID);
-
-        when(testConfigAdmin.createFactoryConfiguration(TEST_PID)).thenReturn(testConfig);
+        when(testConfigRepo.createFactoryConfiguration(TEST_PID, null)).thenReturn(TEST_PID);
         String config = configAdmin.createFactoryConfiguration(TEST_PID);
 
         assertNotNull(config);
         assertEquals(TEST_PID, config);
+
+        verify(testConfigRepo).createFactoryConfiguration(TEST_PID, null);
     }
 
     /**
@@ -438,9 +437,9 @@ public class AdminConsoleServiceTest {
      */
     @Test
     public void testDelete() throws Exception {
-        org.osgi.service.cm.ConfigurationAdmin testConfigAdmin =
-                mock(org.osgi.service.cm.ConfigurationAdmin.class);
-        AdminConsoleService configAdmin = new AdminConsoleService(testConfigAdmin,
+        org.apache.karaf.config.core.ConfigRepository testConfigRepo =
+                mock(org.apache.karaf.config.core.ConfigRepository.class);
+        AdminConsoleService configAdmin = new AdminConsoleService(testConfigRepo,
                 configurationAdminImpl) {
             @Override
             public boolean isPermittedToViewService(String servicePid) {
@@ -448,12 +447,8 @@ public class AdminConsoleServiceTest {
             }
         };
 
-        Configuration testConfig = mock(Configuration.class);
-        when(testConfig.getPid()).thenReturn(TEST_PID);
-
-        when(testConfigAdmin.getConfiguration(TEST_PID, null)).thenReturn(testConfig);
         configAdmin.delete(TEST_PID);
-        verify(testConfig).delete();
+        verify(testConfigRepo).delete(TEST_PID);
     }
 
     /**
@@ -478,7 +473,9 @@ public class AdminConsoleServiceTest {
     public void testDeleteConfigurations() throws Exception {
         org.osgi.service.cm.ConfigurationAdmin testConfigAdmin =
                 mock(org.osgi.service.cm.ConfigurationAdmin.class);
-        AdminConsoleService configAdmin = new AdminConsoleService(testConfigAdmin,
+        org.apache.karaf.config.core.ConfigRepository testConfigRepo =
+                mock(org.apache.karaf.config.core.ConfigRepository.class);
+        AdminConsoleService configAdmin = new AdminConsoleService(testConfigRepo,
                 configurationAdminImpl) {
             @Override
             public boolean isPermittedToViewService(String servicePid) {
@@ -488,13 +485,15 @@ public class AdminConsoleServiceTest {
 
         Configuration testConfig = mock(Configuration.class);
 
+        when(testConfig.getPid()).thenReturn(TEST_PID);
+        when(testConfigRepo.getConfigAdmin()).thenReturn(testConfigAdmin);
         when(testConfigAdmin.listConfigurations(anyString())).thenReturn(new Configuration[] {
                 testConfig});
 
         configAdmin.deleteConfigurations(TEST_FILTER_1);
 
         verify(testConfigAdmin).listConfigurations(TEST_FILTER_1);
-        verify(testConfig).delete();
+        verify(testConfigRepo).delete(TEST_PID);
     }
 
     /**
@@ -519,7 +518,9 @@ public class AdminConsoleServiceTest {
     public void testDeleteConfigurationsInvalidFilter() throws Exception {
         org.osgi.service.cm.ConfigurationAdmin testConfigAdmin =
                 mock(org.osgi.service.cm.ConfigurationAdmin.class);
-        AdminConsoleService configAdmin = new AdminConsoleService(testConfigAdmin,
+        org.apache.karaf.config.core.ConfigRepository testConfigRepo =
+                mock(org.apache.karaf.config.core.ConfigRepository.class);
+        AdminConsoleService configAdmin = new AdminConsoleService(testConfigRepo,
                 configurationAdminImpl) {
             @Override
             public boolean isPermittedToViewService(String servicePid) {
@@ -527,6 +528,7 @@ public class AdminConsoleServiceTest {
             }
         };
 
+        when(testConfigRepo.getConfigAdmin()).thenReturn(testConfigAdmin);
         doThrow(new InvalidSyntaxException("Invalid filter.", "filter")).when(testConfigAdmin)
                 .listConfigurations("><><");
         configAdmin.deleteConfigurations("><><");
@@ -730,8 +732,7 @@ public class AdminConsoleServiceTest {
         when(testConfigAdmin.getConfiguration(TEST_PID, null)).thenReturn(testConfig);
         Map<String, Object> result = configAdmin.getProperties(TEST_PID);
 
-        assertThat("Should return the given properties.", result.get(TEST_KEY),
-                is(TEST_VALUE));
+        assertThat("Should return the given properties.", result.get(TEST_KEY), is(TEST_VALUE));
     }
 
     /**
@@ -803,12 +804,10 @@ public class AdminConsoleServiceTest {
         ArgumentCaptor<Dictionary> captor = ArgumentCaptor.forClass(Dictionary.class);
         // test string jsonarray parsing
         values.put(arrayString, "[\"foo\",\"bar\",\"baz\"]");
-        String primitiveBoolean = getKey(CARDINALITY_PRIMITIVE,
-                AdminConsoleService.TYPE.BOOLEAN);
+        String primitiveBoolean = getKey(CARDINALITY_PRIMITIVE, AdminConsoleService.TYPE.BOOLEAN);
         // test string valueof parsing
         values.put(primitiveBoolean, "true");
-        String primitiveInteger = getKey(CARDINALITY_PRIMITIVE,
-                AdminConsoleService.TYPE.INTEGER);
+        String primitiveInteger = getKey(CARDINALITY_PRIMITIVE, AdminConsoleService.TYPE.INTEGER);
         // test string valueof parsing for non-strings
         values.put(primitiveInteger, (long) TEST_INT);
         String arrayInteger = getKey(CARDINALITY_ARRAY, AdminConsoleService.TYPE.INTEGER);
@@ -1006,8 +1005,7 @@ public class AdminConsoleServiceTest {
     public void testUpdateNullValue() throws Exception {
         AdminConsoleService configAdmin = getConfigAdmin();
         Map<String, Object> testConfigTable = new HashMap<>();
-        testConfigTable.put(getKey(CARDINALITY_PRIMITIVE, AdminConsoleService.TYPE.STRING),
-                null);
+        testConfigTable.put(getKey(CARDINALITY_PRIMITIVE, AdminConsoleService.TYPE.STRING), null);
 
         configAdmin.update(TEST_PID, testConfigTable);
         verify(testConfig).update(any(Dictionary.class));
@@ -1193,8 +1191,7 @@ public class AdminConsoleServiceTest {
 
         };
 
-        AdminConsoleService configurationAdmin = new AdminConsoleService(
-                CONFIGURATION_ADMIN,
+        AdminConsoleService configurationAdmin = new AdminConsoleService(CONFIGURATION_ADMIN,
                 configurationAdminImpl) {
             @Override
             public boolean isPermittedToViewService(String servicePid) {
