@@ -13,17 +13,22 @@
  */
 package org.codice.ddf.admin.application.service.migratable;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import org.apache.commons.lang.Validate;
+import org.apache.karaf.features.BundleInfo;
 import org.apache.karaf.features.Feature;
 import org.apache.karaf.features.FeatureState;
 import org.apache.karaf.features.FeaturesService;
@@ -31,6 +36,9 @@ import org.codice.ddf.migration.MigrationException;
 import org.codice.ddf.migration.MigrationReport;
 import org.codice.ddf.util.function.ThrowingConsumer;
 import org.codice.ddf.util.function.ThrowingRunnable;
+import org.osgi.framework.Bundle;
+import org.osgi.framework.BundleContext;
+import org.osgi.framework.FrameworkUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,15 +57,21 @@ public class FeatureProcessor {
 
   private final FeaturesService service;
 
+  private final BundleProcessor bundleProcessor;
+
   /**
    * Constructs a new feature processor.
    *
    * @param service the features service to use
-   * @throws IllegalArgumentException if <code>service</code> is <code>null</code>
+   * @param bundleProcessor the bundle processor to use
+   * @throws IllegalArgumentException if <code>service</code> or <code>bundleProcessor</code> is
+   *     <code>null</code>
    */
-  public FeatureProcessor(FeaturesService service) {
+  public FeatureProcessor(FeaturesService service, BundleProcessor bundleProcessor) {
     Validate.notNull(service, "invalid null features service");
+    Validate.notNull(bundleProcessor, "invalid null bundle processor");
     this.service = service;
+    this.bundleProcessor = bundleProcessor;
   }
 
   /**
@@ -108,6 +122,7 @@ public class FeatureProcessor {
                             f,
                             service.getState(f.getId()),
                             (service.isRequired(f) ? "required" : "not required")))
+                .sorted()
                 .collect(java.util.stream.Collectors.joining(", ")));
       }
       return features;
@@ -150,6 +165,7 @@ public class FeatureProcessor {
         region,
         ids.stream(),
         Operation.INSTALL,
+        () -> jfeatures.stream().flatMap(this::getFeatures),
         () -> service.installFeatures(ids, region, FeatureProcessor.NO_AUTO_REFRESH));
   }
 
@@ -207,6 +223,7 @@ public class FeatureProcessor {
         region,
         ids.stream(),
         Operation.UNINSTALL,
+        features::stream,
         () -> // first make sure to mark all of them required as uninstallFeatures() only works on
             // required features and goes beyond simply marking them not required
             service.addRequirements(
@@ -246,6 +263,7 @@ public class FeatureProcessor {
         region,
         jfeatures.stream().map(JsonFeature::getId),
         Operation.UPDATE,
+        Stream::empty, // no need to wait for updates
         jfeatures
             .stream()
             .collect(
@@ -507,6 +525,11 @@ public class FeatureProcessor {
     }
   }
 
+  @VisibleForTesting
+  BundleContext getBundleContext() {
+    return FrameworkUtil.getBundle(FeatureProcessor.class).getBundleContext();
+  }
+
   private void addCompoundInstallTaskFor(JsonFeature jfeature, TaskList tasks) {
     // we shall verify if the installed feature is in the proper required state on a subsequent pass
     // and if not, update its requirements appropriately
@@ -570,6 +593,26 @@ public class FeatureProcessor {
     }
   }
 
+  private Stream<Feature> getFeatures(JsonFeature feature) {
+    try {
+      return Stream.of(service.getFeatures(feature.getName(), feature.getVersion()));
+    } catch (Exception e) {
+      return Stream.empty();
+    }
+  }
+
+  private Set<Bundle> getBundlesFor(Stream<Feature> features) {
+    final BundleContext context = getBundleContext();
+
+    return features
+        .map(Feature::getBundles)
+        .flatMap(List::stream)
+        .map(BundleInfo::getLocation)
+        .map(context::getBundle)
+        .filter(Objects::nonNull)
+        .collect(Collectors.toSet());
+  }
+
   private boolean run(
       ProfileMigrationReport report,
       Feature feature,
@@ -592,6 +635,7 @@ public class FeatureProcessor {
               operation.name().toLowerCase(), id, service.getState(id), required, e));
       return false;
     }
+    bundleProcessor.waitForBundlesToStabilize(getBundlesFor(Stream.of(feature)));
     return true;
   }
 
@@ -600,6 +644,7 @@ public class FeatureProcessor {
       String region,
       Stream<String> ids,
       Operation operation,
+      Supplier<Stream<Feature>> featuresToWaitFor,
       ThrowingRunnable<Exception>... tasks) {
     final String attempt = report.getFeatureAttemptString(operation, region);
     final String operating = operation.getOperatingName();
@@ -620,6 +665,7 @@ public class FeatureProcessor {
               operation.name().toLowerCase(), region, e));
       return false;
     }
+    bundleProcessor.waitForBundlesToStabilize(getBundlesFor(featuresToWaitFor.get()));
     return true;
   }
 }

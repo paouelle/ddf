@@ -13,16 +13,31 @@
  */
 package org.codice.ddf.admin.application.service.migratable;
 
+import com.google.common.annotations.VisibleForTesting;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
+import org.apache.commons.lang.Validate;
+import org.apache.karaf.bundle.core.BundleState;
+import org.apache.karaf.bundle.core.BundleStateService;
 import org.codice.ddf.migration.MigrationException;
 import org.codice.ddf.util.function.ThrowingRunnable;
+import org.codice.ddf.util.function.ThrowingSupplier;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.BundleException;
+import org.osgi.framework.wiring.BundleRevision;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,6 +47,27 @@ import org.slf4j.LoggerFactory;
  */
 public class BundleProcessor {
   private static final Logger LOGGER = LoggerFactory.getLogger(BundleProcessor.class);
+
+  private static final Set<BundleState> TRANSITIONAL_STATES =
+      Collections.unmodifiableSet(
+          EnumSet.of(BundleState.Waiting, BundleState.Starting, BundleState.GracePeriod));
+
+  private static final long TIMEOUT = TimeUnit.MINUTES.toMillis(2L);
+
+  private static final long DELAY = 10L;
+
+  private final List<BundleStateService> bundleStateServices;
+
+  /**
+   * Constructs a new bundle processor.
+   *
+   * @param bundleStateServices the bundle state services to use
+   * @throws IllegalArgumentException if <code>bundleStateServices</code> is <code>null</code>
+   */
+  public BundleProcessor(List<BundleStateService> bundleStateServices) {
+    Validate.notNull(bundleStateServices, "invalid null bundle state services");
+    this.bundleStateServices = bundleStateServices;
+  }
 
   /**
    * Gets all available bundles from memory.
@@ -54,18 +90,40 @@ public class BundleProcessor {
   }
 
   /**
-   * Installs the specified bundle.
+   * Waits for all specified bundles to stabilize for a maximum amount of time.
    *
-   * @param context the bundle context to use for installing bundles
-   * @param report the report where to record errors if unable to install the bundle
-   * @param bundle the bundle to install
-   * @return <code>true</code> if the bundle was installed successfully; <code>false</code>
-   *     otherwise
+   * <p><i>Note:</i> This method will return when either all bundles have stabilized or a maximum
+   * amount of time has expired or again if the thread is interrupted.
+   *
+   * @param bundles the bundles to wait for
    */
-  public boolean installBundle(
-      BundleContext context, ProfileMigrationReport report, Bundle bundle) {
-    return run(
-        report, bundle, Operation.INSTALL, () -> context.installBundle(bundle.getLocation()));
+  public void waitForBundlesToStabilize(Collection<Bundle> bundles) {
+    final long end = System.currentTimeMillis() + BundleProcessor.TIMEOUT;
+
+    try {
+      while (true) {
+        LOGGER.trace("Waiting for bundles: {}", bundles);
+        for (Iterator<Bundle> i = bundles.iterator(); i.hasNext(); ) {
+          final Bundle bundle = i.next();
+
+          if (!isInTransitionalState(bundle)) {
+            i.remove();
+          }
+        }
+        if (bundles.isEmpty()) {
+          break;
+        } else if (hasTimedOut(end)) {
+          if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug(
+                "Timed out waiting for bundles: {}", getTransitionalStatesString(bundles.stream()));
+          }
+          break;
+        }
+        TimeUnit.MILLISECONDS.sleep(BundleProcessor.DELAY);
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   /**
@@ -73,15 +131,42 @@ public class BundleProcessor {
    *
    * @param context the bundle context to use for installing bundles
    * @param report the report where to record errors if unable to install the bundle
+   * @param tasks the task list where to record tasks to be executed
+   * @param bundle the bundle to install
+   * @return <code>true</code> if the bundle was installed successfully; <code>false</code>
+   *     otherwise
+   */
+  public boolean installBundle(
+      BundleContext context, ProfileMigrationReport report, TaskList tasks, Bundle bundle) {
+    return run(
+        report,
+        tasks,
+        JsonBundle.getFullName(bundle),
+        JsonBundle.getStateString(bundle),
+        Operation.INSTALL,
+        () -> context.installBundle(bundle.getLocation()));
+  }
+
+  /**
+   * Installs the specified bundle.
+   *
+   * @param context the bundle context to use for installing bundles
+   * @param report the report where to record errors if unable to install the bundle
+   * @param tasks the task list where to record tasks to be executed
    * @param name the name of the bundle to install
    * @param location the location for the bundle to install
    * @return <code>true</code> if the bundle was installed successfully; <code>false</code>
    *     otherwise
    */
   public boolean installBundle(
-      BundleContext context, ProfileMigrationReport report, String name, String location) {
+      BundleContext context,
+      ProfileMigrationReport report,
+      TaskList tasks,
+      String name,
+      String location) {
     return run(
         report,
+        tasks,
         name,
         JsonBundle.UNINSTALLED_STATE_STRING,
         Operation.INSTALL,
@@ -92,34 +177,37 @@ public class BundleProcessor {
    * Uninstalls the specified bundle.
    *
    * @param report the report where to record errors if unable to uninstall the bundle
+   * @param tasks the task list where to record tasks to be executed
    * @param bundle the bundle to uninstall
    * @return <code>true</code> if the bundle was uninstalled successfully; <code>false</code>
    *     otherwise
    */
-  public boolean uninstallBundle(ProfileMigrationReport report, Bundle bundle) {
-    return run(report, bundle, Operation.UNINSTALL, bundle::uninstall);
+  public boolean uninstallBundle(ProfileMigrationReport report, TaskList tasks, Bundle bundle) {
+    return run(report, tasks, bundle, Operation.UNINSTALL, bundle::uninstall);
   }
 
   /**
    * Starts the specified bundle.
    *
    * @param report the report where to record errors if unable to start the bundle
+   * @param tasks the task list where to record tasks to be executed
    * @param bundle the bundle to start
    * @return <code>true</code> if the bundle was started successfully; <code>false</code> otherwise
    */
-  public boolean startBundle(ProfileMigrationReport report, Bundle bundle) {
-    return run(report, bundle, Operation.START, bundle::start);
+  public boolean startBundle(ProfileMigrationReport report, TaskList tasks, Bundle bundle) {
+    return run(report, tasks, bundle, Operation.START, bundle::start);
   }
 
   /**
    * Stops the specified bundle.
    *
    * @param report the report where to record errors if unable to stop the bundle
+   * @param tasks the task list where to record tasks to be executed
    * @param bundle the bundle to stop
    * @return <code>true</code> if the bundle was stopped successfully; <code>false</code> otherwise
    */
-  public boolean stopBundle(ProfileMigrationReport report, Bundle bundle) {
-    return run(report, bundle, Operation.STOP, bundle::stop);
+  public boolean stopBundle(ProfileMigrationReport report, TaskList tasks, Bundle bundle) {
+    return run(report, tasks, bundle, Operation.STOP, bundle::stop);
   }
 
   /**
@@ -239,7 +327,10 @@ public class BundleProcessor {
     // Even if it was uninstall because we need to reserve its spot in the bundle order
     final String name = jbundle.getFullName();
 
-    tasks.add(Operation.INSTALL, name, r -> installBundle(context, r, name, jbundle.getLocation()));
+    tasks.add(
+        Operation.INSTALL,
+        name,
+        r -> installBundle(context, r, tasks, name, jbundle.getLocation()));
   }
 
   /**
@@ -255,7 +346,7 @@ public class BundleProcessor {
     if (state != JsonBundle.SimpleState.UNINSTALLED) {
       final String name = JsonBundle.getFullName(bundle);
 
-      tasks.add(Operation.UNINSTALL, name, r -> uninstallBundle(r, bundle));
+      tasks.add(Operation.UNINSTALL, name, r -> uninstallBundle(r, tasks, bundle));
       return true;
     }
     return false;
@@ -282,9 +373,9 @@ public class BundleProcessor {
 
     if (state == JsonBundle.SimpleState.UNINSTALLED) {
       // we need to first install it and on the next round, start it
-      tasks.add(Operation.INSTALL, name, r -> installBundle(context, r, bundle));
+      tasks.add(Operation.INSTALL, name, r -> installBundle(context, r, tasks, bundle));
     } else if (state != JsonBundle.SimpleState.ACTIVE) {
-      tasks.add(Operation.START, name, r -> startBundle(r, bundle));
+      tasks.add(Operation.START, name, r -> startBundle(r, tasks, bundle));
     }
   }
 
@@ -304,34 +395,82 @@ public class BundleProcessor {
     final String name = JsonBundle.getFullName(bundle);
 
     if (state == JsonBundle.SimpleState.UNINSTALLED) {
-      tasks.add(Operation.INSTALL, name, r -> installBundle(context, r, bundle));
+      tasks.add(Operation.INSTALL, name, r -> installBundle(context, r, tasks, bundle));
     } else if (state == JsonBundle.SimpleState.ACTIVE) {
-      tasks.add(Operation.STOP, name, r -> stopBundle(r, bundle));
+      tasks.add(Operation.STOP, name, r -> stopBundle(r, tasks, bundle));
     }
+  }
+
+  @VisibleForTesting
+  boolean hasTimedOut(long end) {
+    return System.currentTimeMillis() > end;
+  }
+
+  private boolean isInTransitionalState(Bundle bundle) {
+    return getTransitionalState(bundle).isPresent();
+  }
+
+  private Optional<BundleState> getTransitionalState(Bundle bundle) {
+    final BundleRevision bundleRevision = bundle.adapt(BundleRevision.class);
+
+    if ((bundleRevision == null) // means the bundle is uninstalled, so no transitional state
+        || ((bundleRevision.getTypes() & BundleRevision.TYPE_FRAGMENT)
+            == BundleRevision.TYPE_FRAGMENT)) {
+      return Optional.empty();
+    }
+    return bundleStateServices
+        .stream()
+        .map(s -> s.getState(bundle))
+        .filter(BundleProcessor.TRANSITIONAL_STATES::contains)
+        .findFirst();
+  }
+
+  private Optional<String> getTransitionalStateString(Bundle bundle) {
+    return getTransitionalState(bundle).map(s -> JsonBundle.getFullName(bundle) + "[" + s + ']');
+  }
+
+  private String getTransitionalStatesString(Stream<Bundle> bundles) {
+    return bundles
+        .map(this::getTransitionalStateString)
+        .filter(Optional::isPresent)
+        .map(Optional::get)
+        .collect(Collectors.joining(", "));
   }
 
   private boolean run(
       ProfileMigrationReport report,
+      TaskList tasks,
       Bundle bundle,
       Operation operation,
       ThrowingRunnable<BundleException> task) {
     return run(
-        report, JsonBundle.getFullName(bundle), JsonBundle.getStateString(bundle), operation, task);
+        report,
+        tasks,
+        JsonBundle.getFullName(bundle),
+        JsonBundle.getStateString(bundle),
+        operation,
+        () -> {
+          task.run();
+          return bundle;
+        });
   }
 
   private boolean run(
       ProfileMigrationReport report,
+      TaskList tasks,
       String name,
       String state,
       Operation operation,
-      ThrowingRunnable<BundleException> task) {
+      ThrowingSupplier<Bundle, BundleException> task) {
     final String attempt = report.getBundleAttemptString(operation, name);
     final String operating = operation.getOperatingName();
 
     LOGGER.debug("{} bundle '{}'{}", operating, name, attempt);
     report.record("%s bundle [%s]%s.", operating, name, attempt);
+    final Bundle bundle;
+
     try {
-      task.run();
+      bundle = task.get();
     } catch (IllegalStateException | BundleException | SecurityException e) {
       report.recordOnFinalAttempt(
           new MigrationException(
@@ -339,6 +478,16 @@ public class BundleProcessor {
               operation.name().toLowerCase(), name, state, e));
       return false;
     }
+    // add a compound task for execution at the end to wait for all bundles processed to stabilize
+    tasks
+        .addIfAbsent(
+            operation,
+            HashSet<Bundle>::new,
+            (bundles, r) -> {
+              waitForBundlesToStabilize(bundles);
+              return true; // don't fail the execution
+            })
+        .add(name, bundles -> bundles.add(bundle));
     return true;
   }
 }

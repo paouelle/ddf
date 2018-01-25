@@ -15,6 +15,8 @@ package org.codice.ddf.admin.application.service.migratable;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -27,6 +29,7 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
+import org.apache.karaf.features.BundleInfo;
 import org.apache.karaf.features.Feature;
 import org.apache.karaf.features.FeatureState;
 import org.apache.karaf.features.FeaturesService;
@@ -42,6 +45,8 @@ import org.mockito.AdditionalAnswers;
 import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.osgi.framework.Bundle;
+import org.osgi.framework.BundleContext;
 
 public class FeatureProcessorTest {
 
@@ -129,13 +134,23 @@ public class FeatureProcessorTest {
   private final Map<String, Set<JsonFeature>> jfeature3PerRegion = new LinkedHashMap<>();
   private final Map<String, Set<JsonFeature>> jfeature4PerRegion = new LinkedHashMap<>();
 
+  private final Bundle bundle = Mockito.mock(Bundle.class);
+  private final Bundle bundle2 = Mockito.mock(Bundle.class);
+  private final Bundle bundle3 = Mockito.mock(Bundle.class);
+  private final Bundle bundle4 = Mockito.mock(Bundle.class);
+  private final Bundle bundle5 = Mockito.mock(Bundle.class);
+
+  private final BundleProcessor bundleProcessor = Mockito.mock(BundleProcessor.class);
+
+  private final BundleContext context = Mockito.mock(BundleContext.class);
+
   private final FeaturesService featuresService = Mockito.mock(FeaturesService.class);
 
   private final FeatureProcessor featureProcessor =
       Mockito.mock(
           FeatureProcessor.class,
           Mockito.withSettings()
-              .useConstructor(featuresService)
+              .useConstructor(featuresService, bundleProcessor)
               .defaultAnswer(Answers.CALLS_REAL_METHODS));
 
   private final TaskList tasks = Mockito.mock(TaskList.class);
@@ -169,6 +184,29 @@ public class FeatureProcessorTest {
   @SuppressWarnings(
       "ReturnValueIgnored" /* only called for testing and we do not care about the result here */)
   public void setup() throws Exception {
+    final BundleInfo bundleInfo = Mockito.mock(BundleInfo.class);
+    final BundleInfo bundleInfo2 = Mockito.mock(BundleInfo.class);
+    final BundleInfo bundleInfo3 = Mockito.mock(BundleInfo.class);
+    final BundleInfo bundleInfo4 = Mockito.mock(BundleInfo.class);
+    final BundleInfo bundleInfo5 = Mockito.mock(BundleInfo.class);
+    final String location = "location";
+    final String location2 = "location2";
+    final String location3 = "location3";
+    final String location4 = "location4";
+    final String location5 = "location5";
+
+    Mockito.doReturn(location).when(bundleInfo).getLocation();
+    Mockito.doReturn(location2).when(bundleInfo2).getLocation();
+    Mockito.doReturn(location3).when(bundleInfo3).getLocation();
+    Mockito.doReturn(location4).when(bundleInfo4).getLocation();
+    Mockito.doReturn(location5).when(bundleInfo5).getLocation();
+    Mockito.doReturn(bundle).when(context).getBundle(location);
+    Mockito.doReturn(bundle2).when(context).getBundle(location2);
+    Mockito.doReturn(bundle3).when(context).getBundle(location3);
+    Mockito.doReturn(bundle4).when(context).getBundle(location4);
+    Mockito.doReturn(bundle5).when(context).getBundle(location5);
+
+    Mockito.doReturn(context).when(featureProcessor).getBundleContext();
     // execute the tasks added right away
     Mockito.doAnswer(
             AdditionalAnswers.<Boolean, Operation, String, Predicate<ProfileMigrationReport>>answer(
@@ -211,33 +249,43 @@ public class FeatureProcessorTest {
     Mockito.when(featuresService.getState(ID)).thenReturn(STATE);
     Mockito.when(featuresService.isRequired(feature)).thenReturn(REQUIRED);
     Mockito.when(feature.getStartLevel()).thenReturn(START);
+    Mockito.when(featuresService.getFeatures(NAME, VERSION)).thenReturn(new Feature[] {feature});
+    Mockito.when(feature.getBundles()).thenReturn(Arrays.asList(bundleInfo, bundleInfo5));
 
     Mockito.when(feature2.getId()).thenReturn(ID2);
     Mockito.when(feature2.getName()).thenReturn(NAME2);
     Mockito.when(feature2.getVersion()).thenReturn(VERSION2);
     Mockito.when(feature2.getDescription()).thenReturn(DESCRIPTION2);
-    Mockito.when(feature.getRepositoryUrl()).thenReturn(REPOSITORY2);
+    Mockito.when(feature2.getRepositoryUrl()).thenReturn(REPOSITORY2);
     Mockito.when(featuresService.getState(ID2)).thenReturn(STATE2);
     Mockito.when(featuresService.isRequired(feature2)).thenReturn(REQUIRED2);
-    Mockito.when(feature.getStartLevel()).thenReturn(START2);
+    Mockito.when(feature2.getStartLevel()).thenReturn(START2);
+    Mockito.when(featuresService.getFeatures(NAME2, VERSION2)).thenReturn(new Feature[] {feature2});
+    Mockito.when(feature2.getBundles()).thenReturn(Arrays.asList(bundleInfo2, bundleInfo5));
 
     Mockito.when(feature3.getId()).thenReturn(ID3);
     Mockito.when(feature3.getName()).thenReturn(NAME3);
     Mockito.when(feature3.getVersion()).thenReturn(VERSION3);
     Mockito.when(feature3.getDescription()).thenReturn(DESCRIPTION3);
-    Mockito.when(feature.getRepositoryUrl()).thenReturn(REPOSITORY3);
+    Mockito.when(feature3.getRepositoryUrl()).thenReturn(REPOSITORY3);
     Mockito.when(featuresService.getState(ID3)).thenReturn(STATE3);
     Mockito.when(featuresService.isRequired(feature3)).thenReturn(REQUIRED3);
-    Mockito.when(feature.getStartLevel()).thenReturn(START3);
+    Mockito.when(feature3.getStartLevel()).thenReturn(START3);
+    Mockito.when(featuresService.getFeatures(NAME3, VERSION3)).thenThrow(new Exception("testing"));
+    Mockito.when(feature3.getBundles()).thenReturn(Arrays.asList(bundleInfo3, bundleInfo5));
 
     Mockito.when(feature4.getId()).thenReturn(ID4);
     Mockito.when(feature4.getName()).thenReturn(NAME4);
     Mockito.when(feature4.getVersion()).thenReturn(VERSION4);
     Mockito.when(feature4.getDescription()).thenReturn(DESCRIPTION4);
-    Mockito.when(feature.getRepositoryUrl()).thenReturn(REPOSITORY4);
+    Mockito.when(feature4.getRepositoryUrl()).thenReturn(REPOSITORY4);
     Mockito.when(featuresService.getState(ID4)).thenReturn(STATE4);
     Mockito.when(featuresService.isRequired(feature4)).thenReturn(REQUIRED4);
-    Mockito.when(feature.getStartLevel()).thenReturn(START4);
+    Mockito.when(feature4.getStartLevel()).thenReturn(START4);
+    Mockito.when(featuresService.getFeatures(NAME4, VERSION4)).thenReturn(new Feature[] {feature4});
+    Mockito.when(feature4.getBundles()).thenReturn(Arrays.asList(bundleInfo4, bundleInfo5));
+
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
   }
 
   @Test
@@ -245,7 +293,15 @@ public class FeatureProcessorTest {
     thrown.expect(IllegalArgumentException.class);
     thrown.expectMessage(Matchers.containsString("null features service"));
 
-    new FeatureProcessor(null);
+    new FeatureProcessor(null, bundleProcessor);
+  }
+
+  @Test
+  public void testConstructorWithNullBundleProcessor() throws Exception {
+    thrown.expect(IllegalArgumentException.class);
+    thrown.expectMessage(Matchers.containsString("null bundle processor"));
+
+    new FeatureProcessor(featuresService, null);
   }
 
   @Test
@@ -319,6 +375,10 @@ public class FeatureProcessorTest {
     Mockito.verify(featuresService).installFeatures(IDS2, REGION2, NO_AUTO_REFRESH);
     Mockito.verify(featuresService).installFeatures(IDS3, REGION3, NO_AUTO_REFRESH);
     Mockito.verify(report, Mockito.never()).recordOnFinalAttempt(Mockito.any());
+    Mockito.verify(bundleProcessor)
+        .waitForBundlesToStabilize(ImmutableSet.of(bundle, bundle4, bundle5));
+    Mockito.verify(bundleProcessor).waitForBundlesToStabilize(ImmutableSet.of(bundle2, bundle5));
+    Mockito.verify(bundleProcessor).waitForBundlesToStabilize(Collections.emptySet());
   }
 
   @Test
@@ -337,6 +397,12 @@ public class FeatureProcessorTest {
     Mockito.verify(featuresService, Mockito.never())
         .installFeatures(IDS3, REGION3, NO_AUTO_REFRESH);
     verifyRecordOnFinalAttempt(IDS2, "install", e);
+    Mockito.verify(bundleProcessor)
+        .waitForBundlesToStabilize(ImmutableSet.of(bundle, bundle4, bundle5));
+    Mockito.verify(bundleProcessor, Mockito.never())
+        .waitForBundlesToStabilize(ImmutableSet.of(bundle2, bundle5));
+    Mockito.verify(bundleProcessor, Mockito.never())
+        .waitForBundlesToStabilize(Collections.emptySet());
   }
 
   @Test
@@ -349,6 +415,8 @@ public class FeatureProcessorTest {
 
     Mockito.verify(featuresService).installFeatures(IDS14, REGION, NO_AUTO_REFRESH);
     Mockito.verify(report, Mockito.never()).recordOnFinalAttempt(Mockito.any());
+    Mockito.verify(bundleProcessor)
+        .waitForBundlesToStabilize(ImmutableSet.of(bundle, bundle4, bundle5));
   }
 
   @Test
@@ -363,6 +431,8 @@ public class FeatureProcessorTest {
 
     Mockito.verify(featuresService).installFeatures(IDS2, REGION2, NO_AUTO_REFRESH);
     verifyRecordOnFinalAttempt(IDS2, "install", e);
+    Mockito.verify(bundleProcessor, Mockito.never())
+        .waitForBundlesToStabilize(ImmutableSet.of(bundle2, bundle5));
   }
 
   @Test
@@ -384,6 +454,10 @@ public class FeatureProcessorTest {
     Mockito.verify(featuresService).addRequirements(REQUIREMENTS3, NO_AUTO_REFRESH);
     Mockito.verify(featuresService).uninstallFeatures(IDS3, REGION3, NO_AUTO_REFRESH);
     Mockito.verify(report, Mockito.never()).recordOnFinalAttempt(Mockito.any());
+    Mockito.verify(bundleProcessor)
+        .waitForBundlesToStabilize(ImmutableSet.of(bundle, bundle4, bundle5));
+    Mockito.verify(bundleProcessor).waitForBundlesToStabilize(ImmutableSet.of(bundle2, bundle5));
+    Mockito.verify(bundleProcessor).waitForBundlesToStabilize(ImmutableSet.of(bundle3, bundle5));
   }
 
   @Test

@@ -69,6 +69,7 @@
     <bean id="featureProcessor"
           class="org.codice.ddf.admin.application.service.migratable.FeatureProcessor">
         <argument ref="featuresService"/>
+        <argument ref="bundleProcessor"/>
     </bean>
 
     <bean id="featureMigrator"
@@ -78,7 +79,9 @@
     </bean>
 
     <bean id="bundleProcessor"
-          class="org.codice.ddf.admin.application.service.migratable.BundleProcessor"/>
+          class="org.codice.ddf.admin.application.service.migratable.BundleProcessor">
+        <argument ref="bundleStateServices"/>
+    </bean>
 
     <bean id="bundleMigrator"
           class="org.codice.ddf.admin.application.service.migratable.BundleMigrator">

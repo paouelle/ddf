@@ -14,24 +14,37 @@
 package org.codice.ddf.admin.application.service.migratable;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiPredicate;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
+import org.apache.karaf.bundle.core.BundleState;
+import org.apache.karaf.bundle.core.BundleStateService;
+import org.codice.ddf.admin.application.service.migratable.TaskList.CompoundTask;
 import org.codice.ddf.migration.MigrationException;
 import org.hamcrest.Matchers;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.mockito.AdditionalAnswers;
+import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.BundleException;
 import org.osgi.framework.Version;
+import org.osgi.framework.wiring.BundleRevision;
 
 public class BundleProcessorTest {
 
@@ -60,16 +73,27 @@ public class BundleProcessorTest {
   private static final String NAME_VERSION3 = NAME3 + '/' + VERSION3;
   private static final String NAME_VERSION4 = NAME4 + '/' + VERSION4;
 
-  private final Bundle bundle = Mockito.mock(Bundle.class);
+  private final Bundle bundle =
+      Mockito.mock(Bundle.class, Mockito.withSettings().extraInterfaces(BundleRevision.class));
 
-  private final Bundle bundle2 = Mockito.mock(Bundle.class);
+  private final Bundle bundle2 =
+      Mockito.mock(Bundle.class, Mockito.withSettings().extraInterfaces(BundleRevision.class));
 
-  private final Bundle bundle3 = Mockito.mock(Bundle.class);
+  private final Bundle bundle3 =
+      Mockito.mock(Bundle.class, Mockito.withSettings().extraInterfaces(BundleRevision.class));
 
   private final Bundle bundle4 = Mockito.mock(Bundle.class);
 
+  private final BundleStateService stateService = Mockito.mock(BundleStateService.class);
+
+  private final List<BundleStateService> stateServices = Collections.singletonList(stateService);
+
   private final BundleProcessor bundleProcessor =
-      Mockito.mock(BundleProcessor.class, Mockito.CALLS_REAL_METHODS);
+      Mockito.mock(
+          BundleProcessor.class,
+          Mockito.withSettings()
+              .useConstructor(stateServices)
+              .defaultAnswer(Answers.CALLS_REAL_METHODS));
 
   private final TaskList tasks = Mockito.mock(TaskList.class);
 
@@ -79,7 +103,11 @@ public class BundleProcessorTest {
 
   private final JsonProfile jprofile = Mockito.mock(JsonProfile.class);
 
+  @Rule public ExpectedException thrown = ExpectedException.none();
+
   @Before
+  @SuppressWarnings(
+      "ReturnValueIgnored" /* only called for testing and we do not care about the result here */)
   public void setup() throws Exception {
     // execute the tasks added right away
     Mockito.doAnswer(
@@ -88,29 +116,71 @@ public class BundleProcessorTest {
         .when(tasks)
         .add(Mockito.any(), Mockito.anyString(), Mockito.any());
 
+    // execute the compound task, the factory, and the accumulator added later right away
+    Mockito.doAnswer(
+            AdditionalAnswers
+                .<CompoundTask<Object>, Operation, Supplier<Object>,
+                    BiPredicate<Object, ProfileMigrationReport>>
+                    answer(
+                        (o, s, t) -> {
+                          final Object container = s.get();
+                          final CompoundTask<Object> compoundTask =
+                              Mockito.mock(CompoundTask.class);
+
+                          Mockito.doAnswer(
+                                  AdditionalAnswers
+                                      .<CompoundTask<Object>, String, Consumer<Object>>answer(
+                                          (id, a) -> {
+                                            a.accept(container);
+                                            return compoundTask;
+                                          }))
+                              .when(compoundTask)
+                              .add(Mockito.any(), Mockito.any());
+
+                          t.test(container, report);
+                          return compoundTask;
+                        }))
+        .when(tasks)
+        .addIfAbsent(Mockito.any(), Mockito.any(), Mockito.any());
+
     Mockito.when(bundle.getBundleId()).thenReturn(ID);
     Mockito.when(bundle.getSymbolicName()).thenReturn(NAME);
     Mockito.when(bundle.getVersion()).thenReturn(VERSION);
     Mockito.when(bundle.getState()).thenReturn(STATE);
     Mockito.when(bundle.getLocation()).thenReturn(LOCATION);
+    Mockito.when(bundle.adapt(BundleRevision.class)).thenReturn((BundleRevision) bundle);
+    Mockito.when(((BundleRevision) bundle).getTypes()).thenReturn(0);
 
     Mockito.when(bundle2.getBundleId()).thenReturn(ID2);
     Mockito.when(bundle2.getSymbolicName()).thenReturn(NAME2);
     Mockito.when(bundle2.getVersion()).thenReturn(VERSION2);
     Mockito.when(bundle2.getState()).thenReturn(STATE2);
     Mockito.when(bundle2.getLocation()).thenReturn(LOCATION2);
+    Mockito.when(bundle2.adapt(BundleRevision.class)).thenReturn((BundleRevision) bundle2);
+    Mockito.when(((BundleRevision) bundle2).getTypes()).thenReturn(0);
 
     Mockito.when(bundle3.getBundleId()).thenReturn(ID3);
     Mockito.when(bundle3.getSymbolicName()).thenReturn(NAME3);
     Mockito.when(bundle3.getVersion()).thenReturn(VERSION3);
     Mockito.when(bundle3.getState()).thenReturn(STATE3);
     Mockito.when(bundle3.getLocation()).thenReturn(LOCATION3);
+    Mockito.when(bundle3.adapt(BundleRevision.class)).thenReturn((BundleRevision) bundle3);
+    Mockito.when(((BundleRevision) bundle3).getTypes()).thenReturn(BundleRevision.TYPE_FRAGMENT);
 
     Mockito.when(bundle4.getBundleId()).thenReturn(ID4);
     Mockito.when(bundle4.getSymbolicName()).thenReturn(NAME4);
     Mockito.when(bundle4.getVersion()).thenReturn(VERSION4);
     Mockito.when(bundle4.getState()).thenReturn(STATE4);
     Mockito.when(bundle4.getLocation()).thenReturn(LOCATION4);
+    Mockito.when(bundle4.adapt(BundleRevision.class)).thenReturn(null);
+  }
+
+  @Test
+  public void testConstructorWithNullStateServices() throws Exception {
+    thrown.expect(IllegalArgumentException.class);
+    thrown.expectMessage(Matchers.containsString("null bundle state services"));
+
+    new BundleProcessor(null);
   }
 
   @Test
@@ -127,14 +197,51 @@ public class BundleProcessorTest {
   }
 
   @Test
+  public void
+      testWaitForBundlesToStabilizeWhenOneGoesThroughAllTransitionalStatesBeforeBecomingActive()
+          throws Exception {
+    Mockito.doReturn(false).when(bundleProcessor).hasTimedOut(Mockito.anyLong());
+    Mockito.doReturn(
+            BundleState.Waiting, BundleState.Starting, BundleState.GracePeriod, BundleState.Active)
+        .when(stateService)
+        .getState(bundle);
+    Mockito.doReturn(BundleState.Active).when(stateService).getState(bundle2);
+
+    bundleProcessor.waitForBundlesToStabilize(
+        Lists.newArrayList(bundle, bundle2, bundle3, bundle4));
+
+    Mockito.verify(stateService, Mockito.times(4)).getState(bundle);
+    Mockito.verify(stateService).getState(bundle2);
+  }
+
+  @Test
+  public void testWaitForBundlesToStabilizeButItTimedOut() throws Exception {
+    Mockito.doReturn(false, false, false, true)
+        .when(bundleProcessor)
+        .hasTimedOut(Mockito.anyLong());
+    Mockito.doReturn(BundleState.Waiting).when(stateService).getState(bundle);
+    Mockito.doReturn(BundleState.Active).when(stateService).getState(bundle2);
+
+    bundleProcessor.waitForBundlesToStabilize(
+        Lists.newArrayList(bundle, bundle2, bundle3, bundle4));
+
+    Mockito.verify(stateService, Mockito.atLeast(4))
+        .getState(bundle); // will be 5 if debug is turned on
+    Mockito.verify(stateService).getState(bundle2);
+  }
+
+  @Test
   public void testInstallBundle() throws Exception {
     Mockito.when(context.installBundle(LOCATION)).thenReturn(bundle);
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
     Assert.assertThat(
-        bundleProcessor.installBundle(context, report, bundle), Matchers.equalTo(true));
+        bundleProcessor.installBundle(context, report, tasks, bundle), Matchers.equalTo(true));
 
     Mockito.verify(context).installBundle(LOCATION);
     Mockito.verify(report, Mockito.never()).recordOnFinalAttempt(Mockito.any());
+    Mockito.verify(bundleProcessor)
+        .waitForBundlesToStabilize(Mockito.argThat(s -> s.equals(Collections.singleton(bundle))));
   }
 
   @Test
@@ -142,9 +249,10 @@ public class BundleProcessorTest {
     final IllegalStateException e = new IllegalStateException();
 
     Mockito.doThrow(e).when(context).installBundle(LOCATION);
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
     Assert.assertThat(
-        bundleProcessor.installBundle(context, report, bundle), Matchers.equalTo(false));
+        bundleProcessor.installBundle(context, report, tasks, bundle), Matchers.equalTo(false));
 
     final ArgumentCaptor<MigrationException> captor =
         ArgumentCaptor.forClass(MigrationException.class);
@@ -158,6 +266,7 @@ public class BundleProcessorTest {
         me.getMessage(),
         Matchers.containsString("failed to install bundle [" + NAME_VERSION + "]"));
     Assert.assertThat(me.getCause(), Matchers.sameInstance(e));
+    Mockito.verify(bundleProcessor, Mockito.never()).waitForBundlesToStabilize(Mockito.notNull());
   }
 
   @Test
@@ -165,9 +274,10 @@ public class BundleProcessorTest {
     final BundleException e = new BundleException("testing");
 
     Mockito.doThrow(e).when(context).installBundle(LOCATION);
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
     Assert.assertThat(
-        bundleProcessor.installBundle(context, report, bundle), Matchers.equalTo(false));
+        bundleProcessor.installBundle(context, report, tasks, bundle), Matchers.equalTo(false));
 
     final ArgumentCaptor<MigrationException> captor =
         ArgumentCaptor.forClass(MigrationException.class);
@@ -181,6 +291,7 @@ public class BundleProcessorTest {
         me.getMessage(),
         Matchers.containsString("failed to install bundle [" + NAME_VERSION + "]"));
     Assert.assertThat(me.getCause(), Matchers.sameInstance(e));
+    Mockito.verify(bundleProcessor, Mockito.never()).waitForBundlesToStabilize(Mockito.notNull());
   }
 
   @Test
@@ -188,9 +299,10 @@ public class BundleProcessorTest {
     final SecurityException e = new SecurityException("testing");
 
     Mockito.doThrow(e).when(context).installBundle(LOCATION);
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
     Assert.assertThat(
-        bundleProcessor.installBundle(context, report, bundle), Matchers.equalTo(false));
+        bundleProcessor.installBundle(context, report, tasks, bundle), Matchers.equalTo(false));
 
     final ArgumentCaptor<MigrationException> captor =
         ArgumentCaptor.forClass(MigrationException.class);
@@ -204,16 +316,21 @@ public class BundleProcessorTest {
         me.getMessage(),
         Matchers.containsString("failed to install bundle [" + NAME_VERSION + "]"));
     Assert.assertThat(me.getCause(), Matchers.sameInstance(e));
+    Mockito.verify(bundleProcessor, Mockito.never()).waitForBundlesToStabilize(Mockito.notNull());
   }
 
   @Test
   public void testUninstallBundle() throws Exception {
     Mockito.doNothing().when(bundle).uninstall();
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
-    Assert.assertThat(bundleProcessor.uninstallBundle(report, bundle), Matchers.equalTo(true));
+    Assert.assertThat(
+        bundleProcessor.uninstallBundle(report, tasks, bundle), Matchers.equalTo(true));
 
     Mockito.verify(bundle).uninstall();
     Mockito.verify(report, Mockito.never()).recordOnFinalAttempt(Mockito.any());
+    Mockito.verify(bundleProcessor)
+        .waitForBundlesToStabilize(Mockito.argThat(s -> s.equals(Collections.singleton(bundle))));
   }
 
   @Test
@@ -221,8 +338,10 @@ public class BundleProcessorTest {
     final IllegalStateException e = new IllegalStateException();
 
     Mockito.doThrow(e).when(bundle).uninstall();
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
-    Assert.assertThat(bundleProcessor.uninstallBundle(report, bundle), Matchers.equalTo(false));
+    Assert.assertThat(
+        bundleProcessor.uninstallBundle(report, tasks, bundle), Matchers.equalTo(false));
 
     final ArgumentCaptor<MigrationException> captor =
         ArgumentCaptor.forClass(MigrationException.class);
@@ -236,6 +355,7 @@ public class BundleProcessorTest {
         me.getMessage(),
         Matchers.containsString("failed to uninstall bundle [" + NAME_VERSION + "]"));
     Assert.assertThat(me.getCause(), Matchers.sameInstance(e));
+    Mockito.verify(bundleProcessor, Mockito.never()).waitForBundlesToStabilize(Mockito.notNull());
   }
 
   @Test
@@ -243,8 +363,10 @@ public class BundleProcessorTest {
     final BundleException e = new BundleException("testing");
 
     Mockito.doThrow(e).when(bundle).uninstall();
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
-    Assert.assertThat(bundleProcessor.uninstallBundle(report, bundle), Matchers.equalTo(false));
+    Assert.assertThat(
+        bundleProcessor.uninstallBundle(report, tasks, bundle), Matchers.equalTo(false));
 
     final ArgumentCaptor<MigrationException> captor =
         ArgumentCaptor.forClass(MigrationException.class);
@@ -258,6 +380,7 @@ public class BundleProcessorTest {
         me.getMessage(),
         Matchers.containsString("failed to uninstall bundle [" + NAME_VERSION + "]"));
     Assert.assertThat(me.getCause(), Matchers.sameInstance(e));
+    Mockito.verify(bundleProcessor, Mockito.never()).waitForBundlesToStabilize(Mockito.notNull());
   }
 
   @Test
@@ -265,8 +388,10 @@ public class BundleProcessorTest {
     final SecurityException e = new SecurityException();
 
     Mockito.doThrow(e).when(bundle).uninstall();
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
-    Assert.assertThat(bundleProcessor.uninstallBundle(report, bundle), Matchers.equalTo(false));
+    Assert.assertThat(
+        bundleProcessor.uninstallBundle(report, tasks, bundle), Matchers.equalTo(false));
 
     final ArgumentCaptor<MigrationException> captor =
         ArgumentCaptor.forClass(MigrationException.class);
@@ -280,16 +405,20 @@ public class BundleProcessorTest {
         me.getMessage(),
         Matchers.containsString("failed to uninstall bundle [" + NAME_VERSION + "]"));
     Assert.assertThat(me.getCause(), Matchers.sameInstance(e));
+    Mockito.verify(bundleProcessor, Mockito.never()).waitForBundlesToStabilize(Mockito.notNull());
   }
 
   @Test
   public void testStartBundle() throws Exception {
     Mockito.doNothing().when(bundle).start();
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
-    Assert.assertThat(bundleProcessor.startBundle(report, bundle), Matchers.equalTo(true));
+    Assert.assertThat(bundleProcessor.startBundle(report, tasks, bundle), Matchers.equalTo(true));
 
     Mockito.verify(bundle).start();
     Mockito.verify(report, Mockito.never()).recordOnFinalAttempt(Mockito.any());
+    Mockito.verify(bundleProcessor)
+        .waitForBundlesToStabilize(Mockito.argThat(s -> s.equals(Collections.singleton(bundle))));
   }
 
   @Test
@@ -297,8 +426,9 @@ public class BundleProcessorTest {
     final IllegalStateException e = new IllegalStateException();
 
     Mockito.doThrow(e).when(bundle).start();
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
-    Assert.assertThat(bundleProcessor.startBundle(report, bundle), Matchers.equalTo(false));
+    Assert.assertThat(bundleProcessor.startBundle(report, tasks, bundle), Matchers.equalTo(false));
 
     final ArgumentCaptor<MigrationException> captor =
         ArgumentCaptor.forClass(MigrationException.class);
@@ -311,6 +441,7 @@ public class BundleProcessorTest {
     Assert.assertThat(
         me.getMessage(), Matchers.containsString("failed to start bundle [" + NAME_VERSION + "]"));
     Assert.assertThat(me.getCause(), Matchers.sameInstance(e));
+    Mockito.verify(bundleProcessor, Mockito.never()).waitForBundlesToStabilize(Mockito.notNull());
   }
 
   @Test
@@ -318,8 +449,9 @@ public class BundleProcessorTest {
     final BundleException e = new BundleException("testing");
 
     Mockito.doThrow(e).when(bundle).start();
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
-    Assert.assertThat(bundleProcessor.startBundle(report, bundle), Matchers.equalTo(false));
+    Assert.assertThat(bundleProcessor.startBundle(report, tasks, bundle), Matchers.equalTo(false));
 
     final ArgumentCaptor<MigrationException> captor =
         ArgumentCaptor.forClass(MigrationException.class);
@@ -332,6 +464,7 @@ public class BundleProcessorTest {
     Assert.assertThat(
         me.getMessage(), Matchers.containsString("failed to start bundle [" + NAME_VERSION + "]"));
     Assert.assertThat(me.getCause(), Matchers.sameInstance(e));
+    Mockito.verify(bundleProcessor, Mockito.never()).waitForBundlesToStabilize(Mockito.notNull());
   }
 
   @Test
@@ -339,8 +472,9 @@ public class BundleProcessorTest {
     final SecurityException e = new SecurityException();
 
     Mockito.doThrow(e).when(bundle).start();
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
-    Assert.assertThat(bundleProcessor.startBundle(report, bundle), Matchers.equalTo(false));
+    Assert.assertThat(bundleProcessor.startBundle(report, tasks, bundle), Matchers.equalTo(false));
 
     final ArgumentCaptor<MigrationException> captor =
         ArgumentCaptor.forClass(MigrationException.class);
@@ -353,16 +487,20 @@ public class BundleProcessorTest {
     Assert.assertThat(
         me.getMessage(), Matchers.containsString("failed to start bundle [" + NAME_VERSION + "]"));
     Assert.assertThat(me.getCause(), Matchers.sameInstance(e));
+    Mockito.verify(bundleProcessor, Mockito.never()).waitForBundlesToStabilize(Mockito.notNull());
   }
 
   @Test
   public void testStopBundle() throws Exception {
     Mockito.doNothing().when(bundle).stop();
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
-    Assert.assertThat(bundleProcessor.stopBundle(report, bundle), Matchers.equalTo(true));
+    Assert.assertThat(bundleProcessor.stopBundle(report, tasks, bundle), Matchers.equalTo(true));
 
     Mockito.verify(bundle).stop();
     Mockito.verify(report, Mockito.never()).recordOnFinalAttempt(Mockito.any());
+    Mockito.verify(bundleProcessor)
+        .waitForBundlesToStabilize(Mockito.argThat(s -> s.equals(Collections.singleton(bundle))));
   }
 
   @Test
@@ -370,8 +508,9 @@ public class BundleProcessorTest {
     final IllegalStateException e = new IllegalStateException();
 
     Mockito.doThrow(e).when(bundle).stop();
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
-    Assert.assertThat(bundleProcessor.stopBundle(report, bundle), Matchers.equalTo(false));
+    Assert.assertThat(bundleProcessor.stopBundle(report, tasks, bundle), Matchers.equalTo(false));
 
     final ArgumentCaptor<MigrationException> captor =
         ArgumentCaptor.forClass(MigrationException.class);
@@ -384,6 +523,7 @@ public class BundleProcessorTest {
     Assert.assertThat(
         me.getMessage(), Matchers.containsString("failed to stop bundle [" + NAME_VERSION + "]"));
     Assert.assertThat(me.getCause(), Matchers.sameInstance(e));
+    Mockito.verify(bundleProcessor, Mockito.never()).waitForBundlesToStabilize(Mockito.notNull());
   }
 
   @Test
@@ -391,8 +531,9 @@ public class BundleProcessorTest {
     final BundleException e = new BundleException("testing");
 
     Mockito.doThrow(e).when(bundle).stop();
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
-    Assert.assertThat(bundleProcessor.stopBundle(report, bundle), Matchers.equalTo(false));
+    Assert.assertThat(bundleProcessor.stopBundle(report, tasks, bundle), Matchers.equalTo(false));
 
     final ArgumentCaptor<MigrationException> captor =
         ArgumentCaptor.forClass(MigrationException.class);
@@ -405,6 +546,7 @@ public class BundleProcessorTest {
     Assert.assertThat(
         me.getMessage(), Matchers.containsString("failed to stop bundle [" + NAME_VERSION + "]"));
     Assert.assertThat(me.getCause(), Matchers.sameInstance(e));
+    Mockito.verify(bundleProcessor, Mockito.never()).waitForBundlesToStabilize(Mockito.notNull());
   }
 
   @Test
@@ -412,8 +554,9 @@ public class BundleProcessorTest {
     final SecurityException e = new SecurityException();
 
     Mockito.doThrow(e).when(bundle).stop();
+    Mockito.doNothing().when(bundleProcessor).waitForBundlesToStabilize(Mockito.notNull());
 
-    Assert.assertThat(bundleProcessor.stopBundle(report, bundle), Matchers.equalTo(false));
+    Assert.assertThat(bundleProcessor.stopBundle(report, tasks, bundle), Matchers.equalTo(false));
 
     final ArgumentCaptor<MigrationException> captor =
         ArgumentCaptor.forClass(MigrationException.class);
@@ -426,30 +569,33 @@ public class BundleProcessorTest {
     Assert.assertThat(
         me.getMessage(), Matchers.containsString("failed to stop bundle [" + NAME_VERSION + "]"));
     Assert.assertThat(me.getCause(), Matchers.sameInstance(e));
+    Mockito.verify(bundleProcessor, Mockito.never()).waitForBundlesToStabilize(Mockito.notNull());
   }
 
   @Test
   public void testProcessMissingBundleAndPopulateTaskList() throws Exception {
-    Mockito.doReturn(true).when(bundleProcessor).installBundle(context, report, NAME, LOCATION);
+    Mockito.doReturn(true)
+        .when(bundleProcessor)
+        .installBundle(context, report, tasks, NAME_VERSION, LOCATION);
 
     bundleProcessor.processMissingBundleAndPopulateTaskList(
         context, new JsonBundle(NAME, VERSION, ID, STATE, LOCATION), tasks);
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.INSTALL), Mockito.eq(NAME_VERSION), Mockito.notNull());
-    Mockito.verify(bundleProcessor).installBundle(context, report, NAME_VERSION, LOCATION);
+    Mockito.verify(bundleProcessor).installBundle(context, report, tasks, NAME_VERSION, LOCATION);
   }
 
   @Test
   public void testProcessInstalledBundleAndPopulateTaskListWhenUninstalled() throws Exception {
-    Mockito.doReturn(true).when(bundleProcessor).installBundle(context, report, bundle);
+    Mockito.doReturn(true).when(bundleProcessor).installBundle(context, report, tasks, bundle);
     Mockito.doReturn(Bundle.UNINSTALLED).when(bundle).getState();
 
     bundleProcessor.processInstalledBundleAndPopulateTaskList(context, bundle, tasks);
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.INSTALL), Mockito.eq(NAME_VERSION), Mockito.notNull());
-    Mockito.verify(bundleProcessor).installBundle(context, report, bundle);
+    Mockito.verify(bundleProcessor).installBundle(context, report, tasks, bundle);
   }
 
   @Test
@@ -460,45 +606,45 @@ public class BundleProcessorTest {
 
     Mockito.verify(tasks, Mockito.never())
         .add(Mockito.any(), Mockito.eq(NAME_VERSION), Mockito.notNull());
-    Mockito.verify(bundleProcessor, Mockito.never()).installBundle(context, report, bundle);
-    Mockito.verify(bundleProcessor, Mockito.never()).startBundle(report, bundle);
-    Mockito.verify(bundleProcessor, Mockito.never()).stopBundle(report, bundle);
+    Mockito.verify(bundleProcessor, Mockito.never()).installBundle(context, report, tasks, bundle);
+    Mockito.verify(bundleProcessor, Mockito.never()).startBundle(report, tasks, bundle);
+    Mockito.verify(bundleProcessor, Mockito.never()).stopBundle(report, tasks, bundle);
   }
 
   @Test
   public void testProcessInstalledBundleAndPopulateTaskListWhenActive() throws Exception {
-    Mockito.doReturn(true).when(bundleProcessor).stopBundle(report, bundle);
+    Mockito.doReturn(true).when(bundleProcessor).stopBundle(report, tasks, bundle);
     Mockito.doReturn(Bundle.ACTIVE).when(bundle).getState();
 
     bundleProcessor.processInstalledBundleAndPopulateTaskList(context, bundle, tasks);
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.STOP), Mockito.eq(NAME_VERSION), Mockito.notNull());
-    Mockito.verify(bundleProcessor).stopBundle(report, bundle);
+    Mockito.verify(bundleProcessor).stopBundle(report, tasks, bundle);
   }
 
   @Test
   public void testProcessActiveBundleAndPopulateTaskListWhenUninstalled() throws Exception {
-    Mockito.doReturn(true).when(bundleProcessor).installBundle(context, report, bundle);
+    Mockito.doReturn(true).when(bundleProcessor).installBundle(context, report, tasks, bundle);
     Mockito.doReturn(Bundle.UNINSTALLED).when(bundle).getState();
 
     bundleProcessor.processActiveBundleAndPopulateTaskList(context, bundle, tasks);
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.INSTALL), Mockito.eq(NAME_VERSION), Mockito.notNull());
-    Mockito.verify(bundleProcessor).installBundle(context, report, bundle);
+    Mockito.verify(bundleProcessor).installBundle(context, report, tasks, bundle);
   }
 
   @Test
   public void testProcessActiveBundleAndPopulateTaskListWhenInstalled() throws Exception {
-    Mockito.doReturn(true).when(bundleProcessor).startBundle(report, bundle);
+    Mockito.doReturn(true).when(bundleProcessor).startBundle(report, tasks, bundle);
     Mockito.doReturn(Bundle.INSTALLED).when(bundle).getState();
 
     bundleProcessor.processActiveBundleAndPopulateTaskList(context, bundle, tasks);
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.START), Mockito.eq(NAME_VERSION), Mockito.notNull());
-    Mockito.verify(bundleProcessor).startBundle(report, bundle);
+    Mockito.verify(bundleProcessor).startBundle(report, tasks, bundle);
   }
 
   @Test
@@ -509,9 +655,9 @@ public class BundleProcessorTest {
 
     Mockito.verify(tasks, Mockito.never())
         .add(Mockito.any(), Mockito.eq(NAME_VERSION), Mockito.notNull());
-    Mockito.verify(bundleProcessor, Mockito.never()).installBundle(context, report, bundle);
-    Mockito.verify(bundleProcessor, Mockito.never()).startBundle(report, bundle);
-    Mockito.verify(bundleProcessor, Mockito.never()).stopBundle(report, bundle);
+    Mockito.verify(bundleProcessor, Mockito.never()).installBundle(context, report, tasks, bundle);
+    Mockito.verify(bundleProcessor, Mockito.never()).startBundle(report, tasks, bundle);
+    Mockito.verify(bundleProcessor, Mockito.never()).stopBundle(report, tasks, bundle);
   }
 
   @Test
@@ -524,14 +670,14 @@ public class BundleProcessorTest {
 
     Mockito.verify(tasks, Mockito.never())
         .add(Mockito.any(), Mockito.eq(NAME_VERSION), Mockito.notNull());
-    Mockito.verify(bundleProcessor, Mockito.never()).installBundle(context, report, bundle);
-    Mockito.verify(bundleProcessor, Mockito.never()).startBundle(report, bundle);
-    Mockito.verify(bundleProcessor, Mockito.never()).stopBundle(report, bundle);
+    Mockito.verify(bundleProcessor, Mockito.never()).installBundle(context, report, tasks, bundle);
+    Mockito.verify(bundleProcessor, Mockito.never()).startBundle(report, tasks, bundle);
+    Mockito.verify(bundleProcessor, Mockito.never()).stopBundle(report, tasks, bundle);
   }
 
   @Test
   public void testProcessUninstalledBundleAndPopulateTaskListWhenInstalled() throws Exception {
-    Mockito.doReturn(true).when(bundleProcessor).uninstallBundle(report, bundle);
+    Mockito.doReturn(true).when(bundleProcessor).uninstallBundle(report, tasks, bundle);
     Mockito.doReturn(Bundle.INSTALLED).when(bundle).getState();
 
     Assert.assertThat(
@@ -540,12 +686,12 @@ public class BundleProcessorTest {
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.UNINSTALL), Mockito.eq(NAME_VERSION), Mockito.notNull());
-    Mockito.verify(bundleProcessor).uninstallBundle(report, bundle);
+    Mockito.verify(bundleProcessor).uninstallBundle(report, tasks, bundle);
   }
 
   @Test
   public void testProcessUninstalledBundleAndPopulateTaskListWhenActive() throws Exception {
-    Mockito.doReturn(true).when(bundleProcessor).uninstallBundle(report, bundle);
+    Mockito.doReturn(true).when(bundleProcessor).uninstallBundle(report, tasks, bundle);
     Mockito.doReturn(Bundle.ACTIVE).when(bundle).getState();
 
     Assert.assertThat(
@@ -554,7 +700,7 @@ public class BundleProcessorTest {
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.UNINSTALL), Mockito.eq(NAME_VERSION), Mockito.notNull());
-    Mockito.verify(bundleProcessor).uninstallBundle(report, bundle);
+    Mockito.verify(bundleProcessor).uninstallBundle(report, tasks, bundle);
   }
 
   @Test
@@ -563,13 +709,13 @@ public class BundleProcessorTest {
 
     Mockito.doReturn(true)
         .when(bundleProcessor)
-        .installBundle(context, report, NAME_VERSION2, LOCATION2);
+        .installBundle(context, report, tasks, NAME_VERSION2, LOCATION2);
 
     bundleProcessor.processBundleAndPopulateTaskList(context, jbundle2, null, tasks);
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.INSTALL), Mockito.contains(NAME_VERSION2), Mockito.notNull());
-    Mockito.verify(bundleProcessor).installBundle(context, report, NAME_VERSION2, LOCATION2);
+    Mockito.verify(bundleProcessor).installBundle(context, report, tasks, NAME_VERSION2, LOCATION2);
   }
 
   @Test
@@ -577,13 +723,13 @@ public class BundleProcessorTest {
       throws Exception {
     final JsonBundle jbundle2 = new JsonBundle(NAME2, VERSION2, ID2, Bundle.INSTALLED, LOCATION2);
 
-    Mockito.doReturn(true).when(bundleProcessor).installBundle(context, report, bundle2);
+    Mockito.doReturn(true).when(bundleProcessor).installBundle(context, report, tasks, bundle2);
 
     bundleProcessor.processBundleAndPopulateTaskList(context, jbundle2, bundle2, tasks);
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.INSTALL), Mockito.contains(NAME_VERSION2), Mockito.notNull());
-    Mockito.verify(bundleProcessor).installBundle(context, report, bundle2);
+    Mockito.verify(bundleProcessor).installBundle(context, report, tasks, bundle2);
   }
 
   @Test
@@ -595,9 +741,9 @@ public class BundleProcessorTest {
 
     Mockito.verify(tasks, Mockito.never())
         .add(Mockito.any(), Mockito.eq(NAME_VERSION3), Mockito.notNull());
-    Mockito.verify(bundleProcessor, Mockito.never()).installBundle(context, report, bundle3);
-    Mockito.verify(bundleProcessor, Mockito.never()).startBundle(report, bundle3);
-    Mockito.verify(bundleProcessor, Mockito.never()).stopBundle(report, bundle3);
+    Mockito.verify(bundleProcessor, Mockito.never()).installBundle(context, report, tasks, bundle3);
+    Mockito.verify(bundleProcessor, Mockito.never()).startBundle(report, tasks, bundle3);
+    Mockito.verify(bundleProcessor, Mockito.never()).stopBundle(report, tasks, bundle3);
   }
 
   @Test
@@ -605,13 +751,13 @@ public class BundleProcessorTest {
       throws Exception {
     final JsonBundle jbundle4 = new JsonBundle(NAME4, VERSION4, ID4, Bundle.INSTALLED, LOCATION4);
 
-    Mockito.doReturn(true).when(bundleProcessor).stopBundle(report, bundle4);
+    Mockito.doReturn(true).when(bundleProcessor).stopBundle(report, tasks, bundle4);
 
     bundleProcessor.processBundleAndPopulateTaskList(context, jbundle4, bundle4, tasks);
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.STOP), Mockito.contains(NAME_VERSION4), Mockito.notNull());
-    Mockito.verify(bundleProcessor).stopBundle(report, bundle4);
+    Mockito.verify(bundleProcessor).stopBundle(report, tasks, bundle4);
   }
 
   @Test
@@ -619,13 +765,13 @@ public class BundleProcessorTest {
       throws Exception {
     final JsonBundle jbundle2 = new JsonBundle(NAME2, VERSION2, ID2, Bundle.ACTIVE, LOCATION2);
 
-    Mockito.doReturn(true).when(bundleProcessor).installBundle(context, report, bundle2);
+    Mockito.doReturn(true).when(bundleProcessor).installBundle(context, report, tasks, bundle2);
 
     bundleProcessor.processBundleAndPopulateTaskList(context, jbundle2, bundle2, tasks);
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.INSTALL), Mockito.contains(NAME_VERSION2), Mockito.notNull());
-    Mockito.verify(bundleProcessor).installBundle(context, report, bundle2);
+    Mockito.verify(bundleProcessor).installBundle(context, report, tasks, bundle2);
   }
 
   @Test
@@ -633,13 +779,13 @@ public class BundleProcessorTest {
       throws Exception {
     final JsonBundle jbundle3 = new JsonBundle(NAME3, VERSION3, ID3, Bundle.ACTIVE, LOCATION3);
 
-    Mockito.doReturn(true).when(bundleProcessor).startBundle(report, bundle3);
+    Mockito.doReturn(true).when(bundleProcessor).startBundle(report, tasks, bundle3);
 
     bundleProcessor.processBundleAndPopulateTaskList(context, jbundle3, bundle3, tasks);
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.START), Mockito.contains(NAME_VERSION3), Mockito.notNull());
-    Mockito.verify(bundleProcessor).startBundle(report, bundle3);
+    Mockito.verify(bundleProcessor).startBundle(report, tasks, bundle3);
   }
 
   @Test
@@ -650,9 +796,9 @@ public class BundleProcessorTest {
 
     Mockito.verify(tasks, Mockito.never())
         .add(Mockito.any(), Mockito.contains(NAME_VERSION), Mockito.notNull());
-    Mockito.verify(bundleProcessor, Mockito.never()).installBundle(context, report, bundle4);
-    Mockito.verify(bundleProcessor, Mockito.never()).startBundle(report, bundle4);
-    Mockito.verify(bundleProcessor, Mockito.never()).stopBundle(report, bundle4);
+    Mockito.verify(bundleProcessor, Mockito.never()).installBundle(context, report, tasks, bundle4);
+    Mockito.verify(bundleProcessor, Mockito.never()).startBundle(report, tasks, bundle4);
+    Mockito.verify(bundleProcessor, Mockito.never()).stopBundle(report, tasks, bundle4);
   }
 
   @Test
@@ -664,9 +810,9 @@ public class BundleProcessorTest {
 
     Mockito.verify(tasks, Mockito.never())
         .add(Mockito.any(), Mockito.contains(NAME_VERSION2), Mockito.notNull());
-    Mockito.verify(bundleProcessor, Mockito.never()).installBundle(context, report, bundle2);
-    Mockito.verify(bundleProcessor, Mockito.never()).startBundle(report, bundle2);
-    Mockito.verify(bundleProcessor, Mockito.never()).stopBundle(report, bundle2);
+    Mockito.verify(bundleProcessor, Mockito.never()).installBundle(context, report, tasks, bundle2);
+    Mockito.verify(bundleProcessor, Mockito.never()).startBundle(report, tasks, bundle2);
+    Mockito.verify(bundleProcessor, Mockito.never()).stopBundle(report, tasks, bundle2);
   }
 
   @Test
@@ -674,13 +820,13 @@ public class BundleProcessorTest {
       throws Exception {
     final JsonBundle jbundle3 = new JsonBundle(NAME3, VERSION3, ID3, Bundle.UNINSTALLED, LOCATION3);
 
-    Mockito.doReturn(true).when(bundleProcessor).uninstallBundle(report, bundle3);
+    Mockito.doReturn(true).when(bundleProcessor).uninstallBundle(report, tasks, bundle3);
 
     bundleProcessor.processBundleAndPopulateTaskList(context, jbundle3, bundle3, tasks);
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.UNINSTALL), Mockito.contains(NAME_VERSION3), Mockito.notNull());
-    Mockito.verify(bundleProcessor).uninstallBundle(report, bundle3);
+    Mockito.verify(bundleProcessor).uninstallBundle(report, tasks, bundle3);
   }
 
   @Test
@@ -688,13 +834,13 @@ public class BundleProcessorTest {
       throws Exception {
     final JsonBundle jbundle4 = new JsonBundle(NAME4, VERSION4, ID4, Bundle.UNINSTALLED, LOCATION4);
 
-    Mockito.doReturn(true).when(bundleProcessor).uninstallBundle(report, bundle4);
+    Mockito.doReturn(true).when(bundleProcessor).uninstallBundle(report, tasks, bundle4);
 
     bundleProcessor.processBundleAndPopulateTaskList(context, jbundle4, bundle4, tasks);
 
     Mockito.verify(tasks)
         .add(Mockito.eq(Operation.UNINSTALL), Mockito.contains(NAME_VERSION4), Mockito.notNull());
-    Mockito.verify(bundleProcessor).uninstallBundle(report, bundle4);
+    Mockito.verify(bundleProcessor).uninstallBundle(report, tasks, bundle4);
   }
 
   @Test
