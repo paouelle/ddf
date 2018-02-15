@@ -14,7 +14,7 @@
 package org.codice.solr.factory;
 
 import java.util.concurrent.Future;
-import org.apache.solr.client.solrj.SolrClient;
+import org.codice.solr.client.solrj.SolrClient;
 
 /** Interface implemented by factory classes used to create new {@link SolrClient} instances. */
 public interface SolrClientFactory {
