@@ -57,14 +57,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.math.NumberUtils;
-import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrRequest.METHOD;
-import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.response.QueryResponse;
-import org.apache.solr.client.solrj.response.SolrPingResponse;
-import org.apache.solr.common.SolrDocument;
-import org.apache.solr.common.SolrDocumentList;
-import org.apache.solr.common.SolrException;
+import org.codice.solr.client.solrj.SolrQuery;
+import org.codice.solr.client.solrj.SolrRequest.METHOD;
+import org.codice.solr.client.solrj.SolrServerException;
+import org.codice.solr.client.solrj.response.QueryResponse;
+import org.codice.solr.client.solrj.response.SolrPingResponse;
+import org.codice.solr.common.SolrDocument;
+import org.codice.solr.common.SolrDocumentList;
+import org.codice.solr.common.SolrException;
 import org.codice.solr.client.solrj.SolrClient;
 import org.codice.solr.factory.impl.ConfigurationStore;
 import org.slf4j.Logger;
@@ -86,7 +86,7 @@ public class SolrCatalogProvider extends MaskableImpl implements CatalogProvider
 
   public static final int MAX_BOOLEAN_CLAUSES = 1024;
 
-  private static Properties describableProperties = new Properties();
+  private static final Properties describableProperties = new Properties();
 
   static {
     try (InputStream propertiesStream =
@@ -98,19 +98,19 @@ public class SolrCatalogProvider extends MaskableImpl implements CatalogProvider
     }
   }
 
-  private DynamicSchemaResolver resolver;
+  private final DynamicSchemaResolver resolver;
 
-  private SolrClient solr;
+  private final SolrClient solr;
 
-  private SolrMetacardClientImpl client;
+  private final SolrMetacardClientImpl client;
 
-  private FilterAdapter filterAdapter;
+  private final FilterAdapter filterAdapter;
 
   /**
    * Cache of Metacards that have been updated on Solr but might not be visible in the near real
    * time index yet. Cache is checked when ID queries fail from Solr.
    */
-  private Cache<String, Metacard> pendingNrtIndex =
+  private final Cache<String, Metacard> pendingNrtIndex =
       CacheBuilder.newBuilder()
           .expireAfterWrite(
               NumberUtils.toInt(System.getProperty("solr.provider.pending-nrt-ttl"), 5),
@@ -341,7 +341,7 @@ public class SolrCatalogProvider extends MaskableImpl implements CatalogProvider
     /* 1a. Create the old Metacard Query */
     String attributeQuery = getQuery(attributeName, identifiers);
 
-    SolrQuery query = new SolrQuery(attributeQuery);
+    SolrQuery query = solr.createQuery(attributeQuery);
     // Set number of rows to the result size + 1.  The default row size in Solr is 10, so this
     // needs to be set in situations where the number of metacards to update is > 10.  Since there
     // could be more results in the query response than the number of metacards in the update
@@ -354,7 +354,7 @@ public class SolrCatalogProvider extends MaskableImpl implements CatalogProvider
 
     /* 1b. Execute Query */
     try {
-      idResults = solr.query(query, METHOD.POST);
+      idResults = query.execute(METHOD.POST);
     } catch (SolrServerException | SolrException | IOException e) {
       LOGGER.info("Failed to query for metacard(s) before update.", e);
     }
@@ -555,12 +555,12 @@ public class SolrCatalogProvider extends MaskableImpl implements CatalogProvider
 
   private SolrDocumentList getSolrDocumentList(
       List<? extends Serializable> identifierPaged, String fieldName) throws IngestException {
-    SolrQuery query = new SolrQuery(client.getIdentifierQuery(fieldName, identifierPaged));
+    SolrQuery query = solr.createQuery(client.getIdentifierQuery(fieldName, identifierPaged));
     query.setRows(identifierPaged.size());
 
     QueryResponse solrResponse;
     try {
-      solrResponse = solr.query(query, METHOD.POST);
+      solrResponse = query.execute(METHOD.POST);
     } catch (SolrServerException | SolrException | IOException e) {
       LOGGER.info("Failed to get list of Solr documents for delete.", e);
       throw new IngestException(COULD_NOT_COMPLETE_DELETE_REQUEST_MESSAGE);

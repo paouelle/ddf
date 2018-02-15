@@ -69,16 +69,15 @@ import net.sf.saxon.tree.tiny.TinyTree;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
-import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.response.QueryResponse;
-import org.apache.solr.common.SolrDocument;
-import org.apache.solr.common.SolrException;
-import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.common.util.NamedList;
-import org.apache.solr.common.util.SimpleOrderedMap;
 import org.codehaus.stax2.XMLInputFactory2;
 import org.codice.solr.client.solrj.SolrClient;
+import org.codice.solr.client.solrj.SolrQuery;
+import org.codice.solr.client.solrj.SolrServerException;
+import org.codice.solr.client.solrj.response.QueryResponse;
+import org.codice.solr.common.SolrDocument;
+import org.codice.solr.common.SolrException;
+import org.codice.solr.common.SolrInputDocument;
+import org.codice.solr.common.util.NamedList;
 import org.codice.solr.factory.impl.ConfigurationStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -156,7 +155,7 @@ public class DynamicSchemaResolver {
   protected Cache<String, byte[]> metacardTypeNameToSerialCache =
       CacheBuilder.newBuilder().maximumSize(4096).initialCapacity(64).build();
 
-  private Processor processor = new Processor(new Config());
+  private final Processor processor = new Processor(new Config());
 
   public DynamicSchemaResolver(List<String> additionalFields) {
     this.schemaFields = new SchemaFields();
@@ -208,7 +207,7 @@ public class DynamicSchemaResolver {
       return;
     }
 
-    SolrQuery query = new SolrQuery();
+    SolrQuery query = client.createQuery();
 
     // numterms=0 means retrieve everything (regular or dynamic fields)
     query.add("numterms", "0");
@@ -228,7 +227,7 @@ public class DynamicSchemaResolver {
       LOGGER.debug(DynamicSchemaResolver.COULD_NOT_UPDATE_CACHE_FOR_FIELD_NAMES, e);
       throw e;
     }
-    NamedList<?> fields = (SimpleOrderedMap<?>) (response.getResponse().get(FIELDS_KEY));
+    NamedList<?> fields = (NamedList<?>) (response.getResponse().get(FIELDS_KEY));
 
     if (fields == null) {
       return;

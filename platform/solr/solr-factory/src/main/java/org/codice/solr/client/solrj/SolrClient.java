@@ -19,18 +19,15 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import org.apache.solr.client.solrj.SolrRequest;
-import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.StreamingResponseCallback;
-import org.apache.solr.client.solrj.beans.DocumentObjectBinder;
-import org.apache.solr.client.solrj.response.QueryResponse;
-import org.apache.solr.client.solrj.response.SolrPingResponse;
-import org.apache.solr.client.solrj.response.UpdateResponse;
-import org.apache.solr.common.SolrDocument;
-import org.apache.solr.common.SolrDocumentList;
-import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.common.params.SolrParams;
-import org.apache.solr.common.util.NamedList;
+import org.codice.solr.client.solrj.beans.DocumentObjectBinder;
+import org.codice.solr.client.solrj.response.QueryResponse;
+import org.codice.solr.client.solrj.response.SolrPingResponse;
+import org.codice.solr.client.solrj.response.UpdateResponse;
+import org.codice.solr.common.SolrDocument;
+import org.codice.solr.common.SolrDocumentList;
+import org.codice.solr.common.SolrInputDocument;
+import org.codice.solr.common.params.SolrParams;
+import org.codice.solr.common.util.NamedList;
 
 /**
  * Provides a pure interface to the Solr client allowing us to add new functionality.
@@ -764,7 +761,23 @@ public interface SolrClient extends Closeable {
    * @throws SolrServerException if there is an error on the server
    * @throws UnavailableSolrException if the Solr server or the core is unavailable
    */
+  // KEEP
   public SolrPingResponse ping() throws SolrServerException, IOException;
+
+  /**
+   * Creates a query for this Solr client.
+   *
+   * @return a newly created query object
+   */
+  public SolrQuery createQuery();
+
+  /**
+   * Creates a query for this Solr client.
+   *
+   * @param q the query string
+   * @return a newly created query object
+   */
+  public SolrQuery createQuery(String q);
 
   /**
    * Performs a query to the Solr server
@@ -802,19 +815,6 @@ public interface SolrClient extends Closeable {
    * @throws UnavailableSolrException if the Solr server or the core is unavailable
    */
   public QueryResponse query(String collection, SolrParams params, SolrRequest.METHOD method)
-      throws SolrServerException, IOException;
-
-  /**
-   * Performs a query to the Solr server
-   *
-   * @param params an object holding all key/value parameters to send along the request
-   * @param method specifies the HTTP method to use for the request, such as GET or POST
-   * @return a {@link QueryResponse} containing the response from the server
-   * @throws IOException If there is a low-level I/O error.
-   * @throws SolrServerException if there is an error on the server
-   * @throws UnavailableSolrException if the Solr server or the core is unavailable
-   */
-  public QueryResponse query(SolrParams params, SolrRequest.METHOD method)
       throws SolrServerException, IOException;
 
   /**

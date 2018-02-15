@@ -20,9 +20,9 @@ import static ddf.catalog.Constants.SUGGESTION_DICT_KEY;
 import static ddf.catalog.Constants.SUGGESTION_QUERY_KEY;
 import static ddf.catalog.Constants.SUGGESTION_RESULT_KEY;
 import static ddf.catalog.source.solr.DynamicSchemaResolver.FIRST_CHAR_OF_SUFFIX;
-import static org.apache.solr.spelling.suggest.SuggesterParams.SUGGEST_CONTEXT_FILTER_QUERY;
-import static org.apache.solr.spelling.suggest.SuggesterParams.SUGGEST_DICT;
-import static org.apache.solr.spelling.suggest.SuggesterParams.SUGGEST_Q;
+import static org.codice.solr.spelling.suggest.SuggesterParams.SUGGEST_CONTEXT_FILTER_QUERY;
+import static org.codice.solr.spelling.suggest.SuggesterParams.SUGGEST_DICT;
+import static org.codice.solr.spelling.suggest.SuggesterParams.SUGGEST_Q;
 
 import com.google.common.collect.Sets;
 import ddf.catalog.data.Attribute;
@@ -61,19 +61,19 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.Transformer;
-import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrRequest;
-import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.request.AbstractUpdateRequest;
-import org.apache.solr.client.solrj.response.FacetField;
-import org.apache.solr.client.solrj.response.PivotField;
-import org.apache.solr.client.solrj.response.QueryResponse;
-import org.apache.solr.client.solrj.response.SuggesterResponse;
-import org.apache.solr.client.solrj.response.Suggestion;
-import org.apache.solr.common.SolrDocument;
-import org.apache.solr.common.SolrDocumentList;
-import org.apache.solr.common.SolrException;
-import org.apache.solr.common.SolrInputDocument;
+import org.codice.solr.client.solrj.SolrQuery;
+import org.codice.solr.client.solrj.SolrRequest;
+import org.codice.solr.client.solrj.SolrServerException;
+import org.codice.solr.client.solrj.request.AbstractUpdateRequest;
+import org.codice.solr.client.solrj.response.FacetField;
+import org.codice.solr.client.solrj.response.PivotField;
+import org.codice.solr.client.solrj.response.QueryResponse;
+import org.codice.solr.client.solrj.response.SuggesterResponse;
+import org.codice.solr.client.solrj.response.Suggestion;
+import org.codice.solr.common.SolrDocument;
+import org.codice.solr.common.SolrDocumentList;
+import org.codice.solr.common.SolrException;
+import org.codice.solr.common.SolrInputDocument;
 import org.codice.solr.client.solrj.SolrClient;
 import org.locationtech.spatial4j.distance.DistanceUtils;
 import org.opengis.filter.sort.SortBy;
@@ -171,7 +171,7 @@ public class SolrMetacardClientImpl implements SolrMetacardClient {
     Serializable suggestDictProp = request.getPropertyValue(SUGGESTION_DICT_KEY);
 
     if (suggestQueryProp instanceof String && suggestContextProp instanceof String) {
-      query = new SolrQuery();
+      query = client.createQuery();
       query.setRequestHandler("/suggest");
       query.setParam(SUGGEST_Q, (String) suggestQueryProp);
       query.setParam(SUGGEST_CONTEXT_FILTER_QUERY, (String) suggestContextProp);
@@ -181,7 +181,7 @@ public class SolrMetacardClientImpl implements SolrMetacardClient {
     long totalHits = 0;
 
     try {
-      QueryResponse solrResponse = client.query(query, SolrRequest.METHOD.POST);
+      QueryResponse solrResponse = query.execute(SolrRequest.METHOD.POST);
 
       SolrDocumentList docs = solrResponse.getResults();
       if (docs != null) {
@@ -260,10 +260,10 @@ public class SolrMetacardClientImpl implements SolrMetacardClient {
 
   @Override
   public List<Metacard> query(String queryString) throws UnsupportedQueryException {
-    SolrQuery query = new SolrQuery();
+    SolrQuery query = client.createQuery();
     query.setQuery(queryString);
     try {
-      QueryResponse solrResponse = client.query(query, SolrRequest.METHOD.POST);
+      QueryResponse solrResponse = query.execute(SolrRequest.METHOD.POST);
       SolrDocumentList docs = solrResponse.getResults();
 
       List<Metacard> results = new ArrayList<>();
@@ -299,13 +299,13 @@ public class SolrMetacardClientImpl implements SolrMetacardClient {
       return finalSet;
     }
 
-    SolrQuery query = new SolrQuery(contentTypeField + ":[* TO *]");
+    SolrQuery query = client.createQuery(contentTypeField + ":[* TO *]");
     query.setFacet(true);
     query.addFacetField(contentTypeField);
     query.addFacetPivotField(contentTypeField + "," + contentTypeVersionField);
 
     try {
-      QueryResponse solrResponse = client.query(query, SolrRequest.METHOD.POST);
+      QueryResponse solrResponse = query.execute(SolrRequest.METHOD.POST);
       List<FacetField> facetFields = solrResponse.getFacetFields();
       for (Map.Entry<String, List<PivotField>> entry : solrResponse.getFacetPivot()) {
 
