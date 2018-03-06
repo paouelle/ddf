@@ -17,12 +17,10 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import net.jodah.failsafe.Failsafe;
 import net.jodah.failsafe.RetryPolicy;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.math.NumberUtils;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -30,7 +28,6 @@ import org.apache.solr.client.solrj.impl.CloudSolrClient;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.client.solrj.response.CollectionAdminResponse;
 import org.apache.zookeeper.KeeperException;
-import org.codice.ddf.platform.util.StandardThreadFactoryBuilder;
 import org.codice.solr.factory.SolrClientFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,95 +58,44 @@ public class SolrCloudClientFactory implements SolrClientFactory {
   private static final int MAXIMUM_SHARDS_PER_NODE =
       NumberUtils.toInt(System.getProperty("solr.cloud.maxShardPerNode"), 2);
 
-  private static final int THREAD_POOL_DEFAULT_SIZE = 128;
-
-  private static final ScheduledExecutorService EXECUTOR_SERVICE = createExecutorService();
-
   @Override
-  public Future<SolrClient> newClient(String core) {
+  public org.codice.solr.client.solrj.SolrClient newClient(String core) {
     String zookeeperHosts = System.getProperty("solr.cloud.zookeeper");
-    if (zookeeperHosts == null) {
+
+    if (StringUtils.isBlank(zookeeperHosts)) {
       LOGGER.warn(
           "Cannot create Solr Cloud client without Zookeeper host list system property [solr.cloud.zookeeper] being set.");
-      return null;
+      throw new IllegalStateException("system property 'solr.cloud.zookeeper' is not configured");
     }
-    return getClient(zookeeperHosts, core);
-  }
-
-  /**
-   * Creates a new {@link CloudSolrClient} using the list of Zookeeper hosts and collection name
-   * provided.
-   *
-   * @param zookeeperHosts comma-separate list of Zookeeper hosts managing the Solr Cloud
-   *     configuration
-   * @param collection name of the collection to create
-   * @return {@code Future} used to retrieve the new {@link CloudSolrClient} instance
-   */
-  public static Future<SolrClient> getClient(String zookeeperHosts, String collection) {
-    RetryPolicy retryPolicy =
-        new RetryPolicy()
-            .retryWhen(null)
-            .withBackoff(10, TimeUnit.MINUTES.toMillis(1), TimeUnit.MILLISECONDS);
-    return Failsafe.with(retryPolicy)
-        .with(EXECUTOR_SERVICE)
-        .onRetry(
-            (c, failure, ctx) ->
-                LOGGER.debug(
-                    "Attempt {} failed to create Solr Cloud client for collection {} using Zookeeper hosts [{}]. Retrying again.",
-                    ctx.getExecutions(),
-                    collection,
-                    zookeeperHosts))
-        .onFailedAttempt(
-            failure ->
-                LOGGER.debug(
-                    "Attempt failed to create Solr Cloud client for collection {} using Zookeeper hosts [{}]",
-                    collection,
-                    zookeeperHosts,
-                    failure))
-        .onSuccess(
-            client ->
-                LOGGER.debug(
-                    "Successfully created Solr Cloud client for collection {}", collection))
-        .onFailure(
-            failure ->
-                LOGGER.warn(
-                    "All attempts failed to create Solr Cloud client for collection {} using Zookeeper host [{}]",
-                    collection,
-                    zookeeperHosts,
-                    failure))
-        .get(() -> createSolrCloudClient(zookeeperHosts, collection));
-  }
-
-  private static ScheduledExecutorService createExecutorService() throws NumberFormatException {
-    Integer threadPoolSize =
-        NumberUtils.toInt(
-            System.getProperty("org.codice.ddf.system.threadPoolSize"), THREAD_POOL_DEFAULT_SIZE);
-    return Executors.newScheduledThreadPool(
-        threadPoolSize,
-        StandardThreadFactoryBuilder.newThreadFactory("solrCloudClientFactoryThread"));
+    LOGGER.debug(
+        "Solr({}): Creating a Solr Cloud client using Zookeeper hosts [{}]", core, zookeeperHosts);
+    return new SolrClientAdapter(
+        core, () -> SolrCloudClientFactory.createSolrCloudClient(zookeeperHosts, core));
   }
 
   private static SolrClient createSolrCloudClient(String zookeeperHosts, String collection) {
 
-    CloudSolrClient client = new CloudSolrClient(zookeeperHosts);
-    client.connect();
+    try (final Closer closer = new Closer()) {
+      CloudSolrClient client = closer.with(new CloudSolrClient(zookeeperHosts));
+      client.connect();
 
-    try {
-      uploadCoreConfiguration(collection, client);
-    } catch (SolrFactoryException e) {
-      LOGGER.debug("Unable to upload configuration to Solr Cloud", e);
-      return null;
+      try {
+        uploadCoreConfiguration(collection, client);
+      } catch (SolrFactoryException e) {
+        LOGGER.debug("Solr({}): Unable to upload configuration to Solr Cloud", collection, e);
+        return null;
+      }
+
+      try {
+        createCollection(collection, client);
+      } catch (SolrFactoryException e) {
+        LOGGER.debug("Solr({}): Unable to create collection on Solr Cloud", collection, e);
+        return null;
+      }
+
+      client.setDefaultCollection(collection);
+      return closer.returning(client);
     }
-
-    try {
-      createCollection(collection, client);
-    } catch (SolrFactoryException e) {
-      LOGGER.debug("Unable to create collection on Solr Cloud", e);
-      return null;
-    }
-
-    client.setDefaultCollection(collection);
-    return client;
   }
 
   private static void createCollection(String collection, CloudSolrClient client)
@@ -181,7 +127,7 @@ public class SolrCloudClientFactory implements SolrClientFactory {
               "Solr collection [" + collection + "] was not ready in time.");
         }
       } else {
-        LOGGER.debug("Collection already exists: {}", collection);
+        LOGGER.debug("Solr({}): Collection already exists", collection);
       }
     } catch (SolrServerException | IOException e) {
       throw new SolrFactoryException("Failed to create collection: " + collection, e);
@@ -230,14 +176,13 @@ public class SolrCloudClientFactory implements SolrClientFactory {
             .onFailure(
                 failure ->
                     LOGGER.debug(
-                        "All attempts failed to read Zookeeper state for collection existence ("
-                            + collection
-                            + ")",
+                        "Solr({}): All attempts failed to read Zookeeper state for collection existence",
+                        collection,
                         failure))
             .get(() -> client.getZkStateReader().getClusterState().hasCollection(collection));
 
     if (!collectionCreated) {
-      LOGGER.debug("Timeout while waiting for collection to be created: {}", collection);
+      LOGGER.debug("Solr({}): Timeout while waiting for collection to be created", collection);
       return false;
     }
 
@@ -246,9 +191,8 @@ public class SolrCloudClientFactory implements SolrClientFactory {
             .onFailure(
                 failure ->
                     LOGGER.debug(
-                        "All attempts failed to read Zookeeper state for collection's shard count ("
-                            + collection
-                            + ")",
+                        "Solr({}): All attempts failed to read Zookeeper state for collection's shard count",
+                        collection,
                         failure))
             .get(
                 () ->
@@ -256,7 +200,7 @@ public class SolrCloudClientFactory implements SolrClientFactory {
                         == SHARD_COUNT);
 
     if (!shardsStarted) {
-      LOGGER.debug("Timeout while waiting for collection shards to start: {}", collection);
+      LOGGER.debug("Solr({}): Timeout while waiting for collection shards to start", collection);
     }
 
     return shardsStarted;
