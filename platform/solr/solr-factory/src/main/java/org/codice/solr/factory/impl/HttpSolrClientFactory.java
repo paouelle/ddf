@@ -25,23 +25,14 @@ import java.security.cert.CertificateException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import javax.annotation.Nullable;
 import javax.net.ssl.SSLContext;
-import net.jodah.failsafe.Failsafe;
-import net.jodah.failsafe.RetryPolicy;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
-import org.apache.http.client.HttpRequestRetryHandler;
 import org.apache.http.client.methods.HttpHead;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.conn.ssl.SSLContexts;
 import org.apache.http.impl.client.BasicCookieStore;
-import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.solr.client.solrj.SolrClient;
@@ -50,7 +41,6 @@ import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.CoreAdminRequest;
 import org.apache.solr.client.solrj.response.CoreAdminResponse;
 import org.codice.ddf.configuration.SystemBaseUrl;
-import org.codice.ddf.platform.util.StandardThreadFactoryBuilder;
 import org.codice.solr.factory.SolrClientFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,16 +81,20 @@ public class HttpSolrClientFactory implements SolrClientFactory {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(HttpSolrClientFactory.class);
 
-  private static ScheduledExecutorService executor = getThreadPool();
-
-  private static final String DEFAULT_CORE_NAME = "core1";
-
-  private static final String THREAD_POOL_DEFAULT_SIZE = "128";
-
   @Override
-  public Future<SolrClient> newClient(String core) {
-    String solrUrl = System.getProperty("solr.http.url", getDefaultHttpsAddress());
-    return getHttpSolrClient(solrUrl, core);
+  public org.codice.solr.client.solrj.SolrClient newClient(String core) {
+    String solrUrl =
+        StringUtils.defaultIfBlank(
+            System.getProperty("solr.http.url", getDefaultHttpsAddress()),
+            SystemBaseUrl.constructUrl("/solr"));
+    final String coreUrl = solrUrl + "/" + core;
+
+    if (System.getProperty(SOLR_DATA_DIR) != null) {
+      ConfigurationStore.getInstance().setDataDirectoryPath(System.getProperty(SOLR_DATA_DIR));
+    }
+    LOGGER.debug("Solr({}): Creating an HTTP Solr client using url [{}]", core, coreUrl);
+    return new SolrClientAdapter(
+        core, () -> HttpSolrClientFactory.createSolrHttpClient(solrUrl, core, null, coreUrl));
   }
 
   /**
@@ -112,130 +106,35 @@ public class HttpSolrClientFactory implements SolrClientFactory {
     return SystemBaseUrl.constructUrl("https", SOLR_CONTEXT);
   }
 
-  /**
-   * Gets the default Solr server HTTP address.
-   *
-   * @return Solr server HTTP address
-   */
-  public static String getDefaultHttpAddress() {
-    return SystemBaseUrl.constructUrl("http", SOLR_CONTEXT);
-  }
-
-  /**
-   * Creates a new {@link HttpSolrClient} using the URL provided. Uses the default Solr core name
-   * ({@value #DEFAULT_CORE_NAME}) and configuration file ({@value #DEFAULT_SOLRCONFIG_XML}).
-   *
-   * @param url Solr server URL. If {@code null}, defaults to the system's base URL followed by
-   *     {@code /solr}.
-   * @return {@code Future} used to retrieve the new {@link HttpSolrClient} instance
-   */
-  public static Future<SolrClient> getHttpSolrClient(@Nullable String url) {
-    return getHttpSolrClient(url, DEFAULT_CORE_NAME, null);
-  }
-
-  /**
-   * Creates a new {@link HttpSolrClient} using the URL and core name provided. Uses the default
-   * configuration file ({@value #DEFAULT_SOLRCONFIG_XML}).
-   *
-   * @param url Solr server URL. If {@code null}, defaults to the system's base URL followed by
-   *     {@code /solr}.
-   * @param coreName name of the Solr core to create
-   * @return {@code Future} used to retrieve the new {@link HttpSolrClient} instance
-   */
-  public static Future<SolrClient> getHttpSolrClient(@Nullable String url, String coreName) {
-    return getHttpSolrClient(url, coreName, null);
-  }
-
-  /**
-   * Creates a new {@link HttpSolrClient} using the URL, core name and configuration file name
-   * provided.
-   *
-   * @param url Solr server URL. If {@code null}, defaults to the system's base URL followed by
-   *     {@code /solr}.
-   * @param coreName name of the Solr core to create
-   * @param configFile configuration file name. If {@code null}, defaults to {@value
-   *     #DEFAULT_SOLRCONFIG_XML}.
-   * @return {@code Future} used to retrieve the new {@link HttpSolrClient} instance
-   */
-  public static Future<SolrClient> getHttpSolrClient(
-      @Nullable String url, String coreName, @Nullable String configFile) {
-    String solrUrl = StringUtils.defaultIfBlank(url, SystemBaseUrl.constructUrl("/solr"));
-    String coreUrl = url + "/" + coreName;
-
-    if (System.getProperty(SOLR_DATA_DIR) != null) {
-      ConfigurationStore.getInstance().setDataDirectoryPath(System.getProperty(SOLR_DATA_DIR));
-    }
-
-    RetryPolicy retryPolicy =
-        new RetryPolicy().withBackoff(10, TimeUnit.MINUTES.toMillis(1), TimeUnit.MILLISECONDS);
-    return Failsafe.with(retryPolicy)
-        .with(executor)
-        .onRetry(
-            (c, failure, ctx) ->
-                LOGGER.debug(
-                    "Attempt {} failed to create HTTP Solr client ({}). Retrying again.",
-                    ctx.getExecutions(),
-                    coreName))
-        .onFailedAttempt(
-            failure ->
-                LOGGER.debug(
-                    "Attempt failed to create HTTP Solr client (" + coreName + ")", failure))
-        .onSuccess(client -> LOGGER.debug("Successfully created HTTP Solr client ({})", coreName))
-        .onFailure(
-            failure ->
-                LOGGER.warn(
-                    "All attempts failed to create HTTP Solr client (" + coreName + ")", failure))
-        .get(() -> createSolrHttpClient(solrUrl, coreName, configFile, coreUrl));
-  }
-
-  static SolrClient getHttpSolrClient() {
-    return new HttpSolrClient(getDefaultHttpAddress());
-  }
-
-  private static ScheduledExecutorService getThreadPool() throws NumberFormatException {
-    Integer threadPoolSize =
-        Integer.parseInt(
-            System.getProperty("org.codice.ddf.system.threadPoolSize", THREAD_POOL_DEFAULT_SIZE));
-    return Executors.newScheduledThreadPool(
-        threadPoolSize,
-        StandardThreadFactoryBuilder.newThreadFactory("httpSolrClientFactoryThread"));
-  }
-
   private static SolrClient createSolrHttpClient(
       String url, String coreName, String configFile, String coreUrl)
       throws IOException, SolrServerException {
-    SolrClient client;
-    if (StringUtils.startsWith(url, "https")) {
-      createSolrCore(url, coreName, configFile, getSecureHttpClient(false));
-      client = new HttpSolrClient(coreUrl, getSecureHttpClient(true));
-    } else {
-      createSolrCore(url, coreName, configFile, null);
-      client = new HttpSolrClient(coreUrl);
-    }
-    return client;
-  }
-
-  private static CloseableHttpClient getSecureHttpClient(boolean retryRequestsOnError) {
-    SSLConnectionSocketFactory sslConnectionSocketFactory =
-        new SSLConnectionSocketFactory(
-            getSslContext(),
-            getProtocols(),
-            getCipherSuites(),
-            SSLConnectionSocketFactory.BROWSER_COMPATIBLE_HOSTNAME_VERIFIER);
-    HttpRequestRetryHandler solrRetryHandler = new SolrHttpRequestRetryHandler();
-
-    HttpClientBuilder builder =
+    final HttpClientBuilder builder =
         HttpClients.custom()
-            .setSSLSocketFactory(sslConnectionSocketFactory)
             .setDefaultCookieStore(new BasicCookieStore())
             .setMaxConnTotal(128)
             .setMaxConnPerRoute(32);
 
-    if (retryRequestsOnError) {
-      builder.setRetryHandler(solrRetryHandler);
+    if (StringUtils.startsWith(url, "https")) {
+      builder.setSSLSocketFactory(
+          new SSLConnectionSocketFactory(
+              getSslContext(),
+              getProtocols(),
+              getCipherSuites(),
+              SSLConnectionSocketFactory.BROWSER_COMPATIBLE_HOSTNAME_VERIFIER));
     }
+    createSolrCore(url, coreName, configFile, builder.build());
+    try (final Closer closer = new Closer()) {
+      final HttpSolrClient noRetryClient =
+          closer.with(new HttpSolrClient(coreUrl, builder.build()));
+      final HttpSolrClient retryClient =
+          closer.with(
+              new HttpSolrClient(
+                  coreUrl,
+                  builder.setRetryHandler(new SolrHttpRequestRetryHandler(coreName)).build()));
 
-    return builder.build();
+      return closer.returning(new PingAwareSolrClientProxy(retryClient, noRetryClient));
+    }
   }
 
   private static String[] getProtocols() {
@@ -320,7 +219,7 @@ public class HttpSolrClientFactory implements SolrClientFactory {
             new ConfigurationFileProxy(ConfigurationStore.getInstance());
         configProxy.writeSolrConfiguration(coreName);
         if (!solrCoreExists(client, coreName)) {
-          LOGGER.debug("Creating Solr core {}", coreName);
+          LOGGER.debug("Solr({}): Creating Solr core", coreName);
 
           String configFile = StringUtils.defaultIfBlank(configFileName, DEFAULT_SOLRCONFIG_XML);
 
@@ -338,11 +237,11 @@ public class HttpSolrClientFactory implements SolrClientFactory {
           CoreAdminRequest.createCore(
               coreName, instanceDir, client, configFile, DEFAULT_SCHEMA_XML, dataDir, dataDir);
         } else {
-          LOGGER.debug("Solr core ({}) already exists - reloading it", coreName);
+          LOGGER.debug("Solr({}): Solr core already exists; reloading it", coreName);
           CoreAdminRequest.reloadCore(coreName, client);
         }
       } else {
-        LOGGER.debug("Unable to ping Solr core {}", coreName);
+        LOGGER.debug("Solr({}): Unable to ping Solr core at {}", coreName, url);
         throw new SolrServerException("Unable to ping Solr core");
       }
     }

@@ -25,34 +25,51 @@ import org.slf4j.LoggerFactory;
 
 public class SolrHttpRequestRetryHandler implements HttpRequestRetryHandler {
 
-  private static final Integer MAX_RETRY_COUNT = 11;
+  // 30 with 11 retries will make the total attempt last around 2 minutes
+  private static final long TIME_FACTOR = 30L;
+
+  private static final int MAX_RETRY_COUNT = 11;
 
   private static final Logger LOGGER = LoggerFactory.getLogger(SolrHttpRequestRetryHandler.class);
 
+  private final String coreName;
+
+  public SolrHttpRequestRetryHandler(String coreName) {
+    this.coreName = coreName;
+  }
+
   @Override
   public boolean retryRequest(IOException e, int retryCount, HttpContext httpContext) {
+    LOGGER.debug("Solr({}): Http client connection #{} failed", coreName, retryCount, e);
     if (e instanceof InterruptedIOException) {
-      LOGGER.debug("Connection timeout.");
+      LOGGER.debug("Solr({}): Http client connection I/O interrupted.", coreName);
+      Thread.currentThread().interrupt();
+      return false;
     }
     if (e instanceof UnknownHostException) {
-      LOGGER.warn("Solr Client: Unknown host.");
+      LOGGER.warn("Solr({}): Http Client unknown host.", coreName);
     }
     if (e instanceof SSLException) {
-      LOGGER.warn("Solr Client: SSL handshake exception.");
+      LOGGER.warn("Solr({}): Http client SSL handshake exception", coreName);
     }
-    LOGGER.debug("Connection failed", e);
+    if (retryCount > SolrHttpRequestRetryHandler.MAX_RETRY_COUNT) {
+      return false;
+    }
     try {
-      long waitTime = (long) Math.pow(2, Math.min(retryCount, MAX_RETRY_COUNT)) * 50;
+      long waitTime = (long) Math.pow(2, retryCount) * TIME_FACTOR;
       if (LOGGER.isDebugEnabled()) {
         LOGGER.debug(
-            "Solr Client: Connection failed, waiting {} before retrying.",
-            DurationFormatUtils.formatDurationWords(waitTime, true, true));
+            "Solr({}): Http client connection failed, waiting {} before retrying.",
+            coreName,
+            DurationFormatUtils.formatDurationHMS(waitTime));
       }
       synchronized (this) {
         wait(waitTime);
       }
     } catch (InterruptedException ie) {
-      LOGGER.debug("Exception while waiting.", ie);
+      LOGGER.debug("Solr({}): Http client interrupted while waiting.", coreName);
+      Thread.currentThread().interrupt();
+      return false;
     }
     return true;
   }
