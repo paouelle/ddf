@@ -33,7 +33,8 @@ public class ConfigurationStore {
 
   private Double nearestNeighborDistanceLimit;
 
-  private ConfigurationStore() {}
+  public ConfigurationStore() { // nothing to do
+  }
 
   /** @return a unique instance of {@link ConfigurationStore} */
   public static synchronized ConfigurationStore getInstance() {

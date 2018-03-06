@@ -13,18 +13,14 @@
  */
 package org.codice.solr.factory.impl;
 
-import static org.apache.commons.lang.StringUtils.isNotBlank;
-
-import com.google.common.util.concurrent.Futures;
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.Paths;
+import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.Future;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
-import javax.xml.parsers.ParserConfigurationException;
 import org.apache.commons.io.FileUtils;
-import org.apache.solr.client.solrj.SolrClient;
+import org.apache.commons.lang.Validate;
 import org.apache.solr.client.solrj.embedded.EmbeddedSolrServer;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.DirectoryFactory;
@@ -36,8 +32,6 @@ import org.apache.solr.schema.IndexSchema;
 import org.codice.solr.factory.SolrClientFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
 
 /**
  * Factory class used to create new {@link EmbeddedSolrServer} clients. <br>
@@ -48,49 +42,51 @@ import org.xml.sax.SAXException;
  * </ul>
  */
 public class EmbeddedSolrFactory implements SolrClientFactory {
-
   private static final Logger LOGGER = LoggerFactory.getLogger(EmbeddedSolrFactory.class);
 
-  private static final String DEFAULT_EMBEDDED_CORE_NAME = "embedded";
+  private static final Map<EmbeddedSolrFiles, IndexSchema> INDEX_CACHE = new ConcurrentHashMap<>();
 
   public static final String IMMEMORY_SOLRCONFIG_XML = "solrconfig-inmemory.xml";
 
   @Override
-  public Future<SolrClient> newClient(String core) {
-    ConfigurationStore configStore = ConfigurationStore.getInstance();
+  public org.codice.solr.client.solrj.SolrClient newClient(String core) {
+    final ConfigurationStore configStore = ConfigurationStore.getInstance();
 
     if (System.getProperty("solr.data.dir") != null) {
       configStore.setDataDirectoryPath(System.getProperty("solr.data.dir"));
     }
-
-    ConfigurationFileProxy configProxy = new ConfigurationFileProxy(configStore);
-    return Futures.immediateFuture(
-        getEmbeddedSolrServer(
-            core, HttpSolrClientFactory.DEFAULT_SOLRCONFIG_XML, null, configProxy));
+    return EmbeddedSolrFactory.newClient(
+        core,
+        HttpSolrClientFactory.DEFAULT_SOLRCONFIG_XML,
+        HttpSolrClientFactory.DEFAULT_SCHEMA_XML,
+        configStore,
+        new ConfigurationFileProxy(configStore));
   }
 
   /**
-   * Creates a new {@link EmbeddedSolrServer} using the default Solr core name ({@value
-   * #DEFAULT_EMBEDDED_CORE_NAME}), configuration file ({@value
-   * HttpSolrClientFactory#DEFAULT_SOLRCONFIG_XML}) and schema.
+   * Requests the creation of a new embedded {@code SolrClient} for a specific Solr core name.
    *
-   * @return a new {@link EmbeddedSolrServer} instance
+   * @param core the name of the Solr core to create to create a client for
+   * @param configXml the name of the Solr configuration file
+   * @param schemaXml the name of the Solr core schema
+   * @param configStore the {@link ConfigurationStore} instance to use
+   * @param configProxy the {@link ConfigurationFileProxy} instance to use
+   * @return the newly created {@code SolrClient}
+   * @throws IllegalArgumentException if <code>core</code>, <code>configXml</code>, <code>schemaXml
+   *     </code>, <code>configStore</code> or <code>configProxy</code> is <code>null</code>
    */
-  public static SolrClient getEmbeddedSolrServer() {
-    return getEmbeddedSolrServer(
-        DEFAULT_EMBEDDED_CORE_NAME, HttpSolrClientFactory.DEFAULT_SOLRCONFIG_XML, null, null);
-  }
-
-  /**
-   * Creates a new {@link EmbeddedSolrServer} using the Solr configuration file provided. Uses the
-   * default core name ({@value #DEFAULT_EMBEDDED_CORE_NAME}) and schema.
-   *
-   * @param solrConfigXml name of the Solr configuration file. Defaults to {@value
-   *     HttpSolrClientFactory#DEFAULT_SOLRCONFIG_XML} if {@code null}.
-   * @return a new {@link EmbeddedSolrServer} instance
-   */
-  public static EmbeddedSolrServer getEmbeddedSolrServer(@Nullable String solrConfigXml) {
-    return getEmbeddedSolrServer(DEFAULT_EMBEDDED_CORE_NAME, solrConfigXml, null, null);
+  public static org.codice.solr.client.solrj.SolrClient newClient(
+      String core,
+      String configXml,
+      String schemaXml,
+      ConfigurationStore configStore,
+      ConfigurationFileProxy configProxy) {
+    LOGGER.debug("Solr({}): Creating an embedded Solr client", core);
+    return new SolrClientAdapter(
+        core,
+        () ->
+            EmbeddedSolrFactory.getEmbeddedSolrServer(
+                core, configXml, schemaXml, configStore, configProxy));
   }
 
   /**
@@ -98,124 +94,102 @@ public class EmbeddedSolrFactory implements SolrClientFactory {
    * schema and configuration file proxy provided.
    *
    * @param coreName name of the Solr core
-   * @param solrConfigXml name of the Solr configuration file. Defaults to {@value
-   *     HttpSolrClientFactory#DEFAULT_SOLRCONFIG_XML} if {@code null}.
-   * @param schemaXml file name of the Solr core schema. Defaults to {@value
-   *     HttpSolrClientFactory#DEFAULT_SCHEMA_XML} if {@code null}.
-   * @param givenConfigFileProxy {@link ConfigurationFileProxy} instance to use. If {@code null}, a
-   *     new {@link ConfigurationFileProxy} will be used.
+   * @param configXml name of the Solr configuration file
+   * @param schemaXml the name of the Solr core schema
+   * @param configStore the {@link ConfigurationStore} instance to use
+   * @param configProxy {@link ConfigurationFileProxy} instance to use
    * @return a new {@link EmbeddedSolrServer} instance
-   * @throws IllegalArgumentException if it cannot find the Solr config file
+   * @throws IllegalArgumentException if <code>coreName</code>, <code>configXml</code>, <code>
+   *     schemaXml</code>, <code>configStore</code>, or <code>configProxy</code> is <code>null
+   *     </code> or if it cannot find the Solr files
    */
-  public static EmbeddedSolrServer getEmbeddedSolrServer(
+  private static EmbeddedSolrServer getEmbeddedSolrServer(
       String coreName,
-      @Nullable String solrConfigXml,
-      @Nullable String schemaXml,
-      @Nullable ConfigurationFileProxy givenConfigFileProxy) {
+      String configXml,
+      String schemaXml,
+      ConfigurationStore configStore,
+      ConfigurationFileProxy configProxy) {
+    Validate.notNull(configStore, "invalid null Solr config store");
+    final EmbeddedSolrFiles files =
+        new EmbeddedSolrFiles(
+            coreName, configXml, new String[] {schemaXml, "managed-schema"}, configProxy);
 
     LOGGER.debug(
-        "Retrieving embedded solr with the following properties: [{},{},{}]",
-        solrConfigXml,
-        schemaXml,
-        givenConfigFileProxy);
-
-    String solrConfigFileName = HttpSolrClientFactory.DEFAULT_SOLRCONFIG_XML;
-    String schemaFileName = HttpSolrClientFactory.DEFAULT_SCHEMA_XML;
-
-    if (isNotBlank(solrConfigXml)) {
-      solrConfigFileName = solrConfigXml;
+        "Solr({}): Retrieving embedded solr with the following properties: [{},{}]",
+        coreName,
+        files,
+        configProxy);
+    if (!configStore.isInMemory()) {
+      configProxy.writeSolrConfiguration(coreName);
     }
+    final ClassLoader tccl = Thread.currentThread().getContextClassLoader();
 
-    if (isNotBlank(schemaXml)) {
-      schemaFileName = schemaXml;
-    }
-
-    ConfigurationFileProxy configProxy = givenConfigFileProxy;
-
-    if (givenConfigFileProxy == null) {
-      configProxy = new ConfigurationFileProxy(ConfigurationStore.getInstance());
-    }
-
-    configProxy.writeSolrConfiguration(coreName);
-    File solrConfigFile = getConfigFile(solrConfigFileName, configProxy, coreName);
-    File solrSchemaFile = getConfigFile(schemaFileName, configProxy, coreName);
-
-    if (solrConfigFile == null) {
-      throw new IllegalArgumentException("Unable to find Solr config file");
-    }
-
-    if (solrSchemaFile == null) {
-      solrSchemaFile = getConfigFile("managed-schema", configProxy, coreName);
-      if (solrSchemaFile == null) {
-        throw new IllegalArgumentException("Unable to find Solr schema file.");
-      }
-    }
-
-    File solrConfigHome = new File(solrConfigFile.getParent());
-
-    ClassLoader tccl = Thread.currentThread().getContextClassLoader();
-    try {
-      Thread.currentThread().setContextClassLoader(EmbeddedSolrFactory.class.getClassLoader());
-
+    try (final Closer closer = new Closer()) {
       // NamedSPILoader uses the thread context classloader to lookup
       // codecs, posting formats, and analyzers
-      SolrConfig solrConfig =
-          new SolrConfig(
-              Paths.get(solrConfigHome.getParent()),
-              solrConfigFileName,
-              new InputSource(FileUtils.openInputStream(solrConfigFile)));
-      IndexSchema indexSchema =
-          new IndexSchema(
-              solrConfig,
-              schemaFileName,
-              new InputSource(FileUtils.openInputStream(solrSchemaFile)));
-      SolrResourceLoader loader =
-          new SolrResourceLoader(Paths.get(solrConfigHome.getAbsolutePath()));
-      SolrCoreContainer container = new SolrCoreContainer(loader);
-
-      String dataDirPath = null;
-      if (!ConfigurationStore.getInstance().isInMemory()) {
-        File dataDir = configProxy.getDataDirectory();
-        if (dataDir != null) {
-          dataDirPath = Paths.get(dataDir.getAbsolutePath(), coreName, "data").toString();
-          LOGGER.debug("Using data directory [{}]", dataDirPath);
-        }
-      } else {
-        PluginInfo info = solrConfig.getPluginInfo(DirectoryFactory.class.getName());
-        if (info != null && !"solr.RAMDirectoryFactory".equals(info.className)) {
-          LOGGER.debug("Using in-memory configuration without RAMDirectoryFactory.");
-        }
-      }
-      CoreDescriptor coreDescriptor =
+      Thread.currentThread().setContextClassLoader(EmbeddedSolrFactory.class.getClassLoader());
+      final IndexSchema indexSchema =
+          EmbeddedSolrFactory.INDEX_CACHE.computeIfAbsent(files, EmbeddedSolrFiles::getSchemaIndex);
+      final SolrResourceLoader loader =
+          closer.with(new SolrResourceLoader(files.getConfigHome().toPath()));
+      final SolrCoreContainer container = new SolrCoreContainer(loader);
+      final SolrConfig solrConfig = files.getConfig();
+      final String dataDirPath =
+          EmbeddedSolrFactory.getDataDirPath(coreName, configStore, configProxy, solrConfig);
+      final CoreDescriptor coreDescriptor =
           new CoreDescriptor(
               coreName, solrConfig.getResourceLoader().getInstancePath(), new Properties(), false);
+      final SolrCore core =
+          closer.with(
+              new SolrCore(
+                  container,
+                  coreName,
+                  dataDirPath,
+                  solrConfig,
+                  indexSchema,
+                  null,
+                  coreDescriptor,
+                  null,
+                  null,
+                  null,
+                  false));
 
-      SolrCore core =
-          new SolrCore(
-              container,
-              coreName,
-              dataDirPath,
-              solrConfig,
-              indexSchema,
-              null,
-              coreDescriptor,
-              null,
-              null,
-              null,
-              false);
       container.register(coreName, core, false, true);
-
-      return new EmbeddedSolrServer(container, coreName);
-    } catch (ParserConfigurationException | IOException | SAXException e) {
-      throw new IllegalArgumentException(
-          "Unable to parse Solr configuration file: " + solrConfigFileName, e);
+      return closer.returning(new EmbeddedSolrServer(container, coreName));
     } finally {
       Thread.currentThread().setContextClassLoader(tccl);
     }
   }
 
+  @Nullable
   public static File getConfigFile(
       String configFileName, ConfigurationFileProxy configProxy, String core) {
     return FileUtils.toFile(configProxy.getResource(configFileName, core));
+  }
+
+  @Nullable
+  private static String getDataDirPath(
+      String coreName,
+      ConfigurationStore configStore,
+      ConfigurationFileProxy configProxy,
+      SolrConfig solrConfig) {
+    String dataDirPath = null;
+
+    if (!configStore.isInMemory()) {
+      final File dataDir = configProxy.getDataDirectory();
+
+      if (dataDir != null) {
+        dataDirPath = Paths.get(dataDir.getAbsolutePath(), coreName, "data").toString();
+        LOGGER.debug("Solr({}): Using data directory [{}]", coreName, dataDirPath);
+      }
+    } else {
+      final PluginInfo info = solrConfig.getPluginInfo(DirectoryFactory.class.getName());
+
+      if (info != null && !"solr.RAMDirectoryFactory".equals(info.className)) {
+        LOGGER.debug(
+            "Solr({}): Using in-memory configuration without RAMDirectoryFactory.", coreName);
+      }
+    }
+    return dataDirPath;
   }
 }
