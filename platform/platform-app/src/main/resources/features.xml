@@ -1217,7 +1217,12 @@
         <feature prerequisite="true">web-container</feature>
         <feature prerequisite="true">platform-dependencies</feature>
         <feature>platform-all</feature>
-        <feature>banana</feature>
+        <!-- banana is currently not working with the existing configuration. It fails to create the
+             core because the banana schema doesn't define the 'lowercase' type. After adding this
+             type to the banana schema, the core gets created but is no longer pingable. Solr
+             returns 404. The solution would be to start keeping a different solrconfig.xml file
+             for banana. -->
+        <!--<feature>banana</feature>-->
         <feature>clientinfo-filter</feature>
         <feature>camel-aws</feature>
         <feature>transaction-api</feature>
