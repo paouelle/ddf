@@ -46,9 +46,9 @@ public class SolrClientStatefulProxy extends SolrClientProxy {
 
   private static final String OK_STATUS = "OK";
 
-  private static final RetryPolicy RETRY_UNTIL_NOT_INTERRUPTED_AND_REACHABLE =
+  private static final RetryPolicy NOT_INTERRUPTED_AND_REACHABLE =
       new RetryPolicy()
-          .<OptionalCause<?>>retryIf(OptionalCause::isAvailable)
+          .<OptionalCause<?>>retryIf(OptionalCause::isNotAvailable)
           .abortOn(InterruptedIOException.class, InterruptedException.class)
           .withBackoff(1L, TimeUnit.MINUTES.toSeconds(2L), TimeUnit.SECONDS);
 
@@ -78,16 +78,13 @@ public class SolrClientStatefulProxy extends SolrClientProxy {
     this.client = client;
     this.core = core;
     this.state =
-        new StatefulCloseable<>(
-            core,
-            "Proxy",
-            "connection",
-            executor,
-            SolrClientStatefulProxy.RETRY_UNTIL_NOT_INTERRUPTED_AND_REACHABLE,
-            this::checkIfReachable,
-            this::notifyAvailability);
-    state.setUnavailable(
-        OptionalCause.of(new UnavailableSolrException("initializing '" + core + "' core")));
+        StatefulCloseable.retryingFor(core, "Proxy")
+            .to("connection", this::checkIfReachable)
+            .until(SolrClientStatefulProxy.NOT_INTERRUPTED_AND_REACHABLE)
+            .using(executor)
+            .whenAvailabilityChanges(this::notifyAdapterListener)
+            .initializingWith(
+                OptionalCause.of(new UnavailableSolrException("initializing '" + core + "' core")));
   }
 
   @Override
@@ -98,7 +95,7 @@ public class SolrClientStatefulProxy extends SolrClientProxy {
       } // else - currently not available so do a spot check to see if it suddenly became reachable
       checkIfReachable("from the API because the proxy is currently unavailable")
           .throwIfNotAvailable();
-      if (!state.setAvailable(OptionalCause.empty())) {
+      if (!state.setInitialized(OptionalCause.empty())) {
         return client;
       }
     }
@@ -137,11 +134,13 @@ public class SolrClientStatefulProxy extends SolrClientProxy {
 
   @Override
   public boolean isAvailable() {
-    if (state.isAvailable() && lastPingWasNotRecent()) {
-      LOGGER.debug(
-          "Solr({}): Proxy is starting a background task to ping the client because the last ping was too long ago",
-          core);
-      executor.submit(this::backgroundPing);
+    if (state.isAvailable()) {
+      if (lastPingWasNotRecent()) {
+        LOGGER.debug(
+            "Solr({}): Proxy is starting a background task to ping the client because the last ping was too long ago",
+            core);
+        executor.submit(this::backgroundPing);
+      }
       return true;
     }
     return false;
@@ -176,10 +175,10 @@ public class SolrClientStatefulProxy extends SolrClientProxy {
       final Object status = ping.getResponse().get("status");
 
       if (SolrClientStatefulProxy.OK_STATUS.equals(status)) {
-        state.setAvailable(OptionalCause.empty());
+        state.setInitialized(OptionalCause.empty());
       } else {
         LOGGER.debug(SolrClientStatefulProxy.FAILED_TO_PING_WITH_STATUS, core, status);
-        state.setUnavailableIfAvailable(
+        state.setInitializingIfInitialized(
             OptionalCause.of(new UnavailableSolrException(String.format(PING_STATUS, status))));
       }
       return ping;
@@ -187,7 +186,7 @@ public class SolrClientStatefulProxy extends SolrClientProxy {
       throw e;
     } catch (Throwable t) {
       LOGGER.debug(SolrClientStatefulProxy.FAILED_TO_PING, core, t);
-      state.setUnavailableIfAvailable(OptionalCause.of(t));
+      state.setInitializingIfInitialized(OptionalCause.of(t));
       throw t;
     }
   }
@@ -221,9 +220,9 @@ public class SolrClientStatefulProxy extends SolrClientProxy {
         checkIfReachable("from the API after an error was detected");
 
     if (cause.isAvailable()) {
-      state.setAvailable(cause);
+      state.setInitialized(cause);
     } else {
-      state.setUnavailableIfAvailable(OptionalCause.of(error));
+      state.setInitializingIfInitialized(OptionalCause.of(error));
     }
   }
 
@@ -232,7 +231,7 @@ public class SolrClientStatefulProxy extends SolrClientProxy {
     return checkIfReachable("in the background while trying to reconnect");
   }
 
-  private void notifyAvailability() {
+  private void notifyAdapterListener() {
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug(
           "Solr({}): Proxy is notifying its listener [{}] that its availability changed to [{}]",
@@ -285,7 +284,7 @@ public class SolrClientStatefulProxy extends SolrClientProxy {
      * @throws IllegalArgumentException if <code>error</code> is <code>null</code>
      */
     private static <T extends Throwable> OptionalCause<T> of(T error) {
-      return new OptionalCause(error);
+      return new OptionalCause<>(error);
     }
 
     @Nullable private final T error;
@@ -334,9 +333,24 @@ public class SolrClientStatefulProxy extends SolrClientProxy {
       return (error == null);
     }
 
+    /**
+     * Checks if this optional cause has an error associated with it.
+     *
+     * @return <code>true</code> if an error are associated with this optional cause; <code>false
+     *     </code> otherwise
+     */
+    public boolean isNotAvailable() {
+      return !isAvailable();
+    }
+
     @Override
     public void close() {
       // nothing to do
+    }
+
+    @Override
+    public String toString() {
+      return (error != null) ? String.format("OptionalCause[%s]", error) : "OptionalCause.empty";
     }
   }
 }

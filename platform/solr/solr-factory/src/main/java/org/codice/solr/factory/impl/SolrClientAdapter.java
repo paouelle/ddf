@@ -43,7 +43,7 @@ public class SolrClientAdapter extends SolrClientProxy
 
   private static final int THREAD_POOL_DEFAULT_SIZE = 128;
 
-  private static final RetryPolicy RETRY_UNTIL_NOT_INTERRUPTED_AND_NO_ERROR_AND_NOT_NULL =
+  private static final RetryPolicy NOT_INTERRUPTED_AND_NO_ERROR_AND_NOT_NULL =
       new RetryPolicy()
           .retryWhen(null)
           .retryOn(SolrServerException.class, SolrException.class, IOException.class)
@@ -96,17 +96,14 @@ public class SolrClientAdapter extends SolrClientProxy
     this.core = core;
     this.creator = creator;
     this.state =
-        new StatefulCloseable<>(
-                core,
-                "Adapter",
-                "creation",
-                SolrClientAdapter.EXECUTOR,
-                SolrClientAdapter.RETRY_UNTIL_NOT_INTERRUPTED_AND_NO_ERROR_AND_NOT_NULL,
-                this::create,
-                this::notifyAvailability)
+        StatefulCloseable.retryingFor(core, "Adapter")
+            .to("creation", this::create)
+            .until(SolrClientAdapter.NOT_INTERRUPTED_AND_NO_ERROR_AND_NOT_NULL)
+            .using(SolrClientAdapter.EXECUTOR)
+            .whenAvailabilityChanges(this::notifyListenersAndInitializers)
             .withInitLogLevel(Level.INFO)
-            .withFailedLogLevel(Level.WARN);
-    state.setUnavailable(new UnavailableSolrClient("initializing '" + core + "' core"));
+            .withFailedLogLevel(Level.WARN)
+            .initializingWith(new UnavailableSolrClient("initializing '" + core + "' core"));
   }
 
   private static ScheduledExecutorService createExecutor() throws NumberFormatException {
@@ -197,17 +194,17 @@ public class SolrClientAdapter extends SolrClientProxy
 
   private SolrClientProxy create() throws SolrServerException, IOException, InterruptedException {
     return new SolrClientStatefulProxy(
-        SolrClientAdapter.EXECUTOR, this::notifyAvailability, creator.create(), core);
+        SolrClientAdapter.EXECUTOR, this::notifyListenersAndInitializers, creator.create(), core);
   }
 
-  private void notifyAvailability(SolrClientProxy c) {
+  private void notifyListenersAndInitializers(SolrClientProxy c) {
     // must be from the current client to notify our listeners and initializers
     if (c == getProxiedClient()) {
-      notifyAvailability();
+      notifyListenersAndInitializers();
     }
   }
 
-  private void notifyAvailability() {
+  private void notifyListenersAndInitializers() {
     final boolean available = isAvailable();
     final String availableString = SolrClientAdapter.availableToString(available);
 
