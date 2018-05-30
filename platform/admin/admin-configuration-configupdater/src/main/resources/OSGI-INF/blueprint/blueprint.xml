@@ -20,13 +20,34 @@
                             unbind-method="unbindPlugin"/>
     </reference-list>
 
+    <reference id="configStrategy"
+               interface="org.codice.ddf.platform.io.internal.PersistenceStrategy"
+               filter="(platform.io.strategy.extension=config)"
+               availability="mandatory"/>
+
     <reference id="configAdmin"
                interface="org.codice.ddf.admin.core.api.ConfigurationAdmin"
+               availability="mandatory"/>
+
+    <reference id="osgi.configAdmin"
+               interface="org.osgi.service.cm.ConfigurationAdmin"
                availability="mandatory"/>
 
     <reference id="encryptionService"
                interface="ddf.security.encryption.EncryptionService"
                availability="mandatory"/>
+
+    <reference id="fabric8.resolver"
+               interface="io.fabric8.karaf.core.properties.PlaceholderResolver"
+               availability="mandatory"/>
+
+    <reference id="config.mapper.service"
+               interface="org.codice.ddf.admin.configuration.ConfigMappingService"
+               availability="optional"/>
+
+    <reference id="config.abstraction.service"
+               interface="org.codice.ddf.admin.configuration.ConfigAbstractionAgent"
+               availability="optional"/>
 
     <bean id="configUpdater" class="org.codice.ddf.admin.configuration.ConfigurationUpdater">
         <argument ref="configAdmin"/>
@@ -36,5 +57,64 @@
 
     <service ref="configUpdater"
              interface="org.codice.felix.cm.internal.ConfigurationPersistencePlugin"/>
+
+
+    <bean id="sorted.mapping.listeners"
+          class="org.codice.ddf.platform.util.SortedServiceList"/>
+    <reference-list id="mapping.listeners"
+                    interface="org.codice.ddf.admin.configuration.ConfigMappingListener"
+                    availability="optional">
+        <reference-listener bind-method="bindPlugin" unbind-method="unbindPlugin"
+                            ref="sorted.mapping.listeners"/>
+    </reference-list>
+
+    <reference-list id="abstract.listeners"
+                    interface="org.codice.ddf.admin.configuration.ConfigAbstractionListener"
+                    availability="optional">
+        <reference-listener bind-method="bindPlugin"
+                            unbind-method="unbindPlugin" ref="sorted.abstract.listeners"/>
+    </reference-list>
+    <bean id="sorted.abstract.listeners" class="org.codice.ddf.platform.util.SortedServiceList"/>
+
+    <service auto-export="interfaces">
+        <bean class="org.codice.ddf.admin.configuration.IfPropertiesFunction"/>
+    </service>
+
+    <service auto-export="interfaces">
+        <bean class="org.codice.ddf.admin.configuration.ConfigAbstractionPropertiesFunction">
+            <argument ref="config.abstraction.service"/>
+        </bean>
+    </service>
+
+    <service auto-export="interfaces">
+        <bean class="org.codice.ddf.admin.configuration.ConfigMappingServiceImpl"
+              init-method="init">
+            <argument ref="fabric8.resolver"/>
+            <argument ref="sorted.mapping.listeners"/>
+        </bean>
+    </service>
+
+    <service auto-export="interfaces">
+        <bean class="org.codice.ddf.admin.configuration.ConfigAdminAgent"
+              init-method="init">
+            <argument ref="osgi.configAdmin"/>
+            <argument ref="configAdmin"/>
+            <argument ref="config.mapper.service"/>
+        </bean>
+    </service>
+
+    <bean id="configAbstractionAgent"
+          class="org.codice.ddf.admin.configuration.ConfigAbstractionAgentImpl">
+        <argument ref="sorted.abstract.listeners"/>
+        <argument ref="configStrategy"/>
+    </bean>
+
+    <service ref="configAbstractionAgent">
+        <interfaces>
+            <value>org.apache.felix.fileinstall.ArtifactListener</value>
+            <value>org.apache.felix.fileinstall.ArtifactInstaller</value>
+            <value>org.codice.ddf.admin.configuration.ConfigAbstractionAgent</value>
+        </interfaces>
+    </service>
 
 </blueprint>
