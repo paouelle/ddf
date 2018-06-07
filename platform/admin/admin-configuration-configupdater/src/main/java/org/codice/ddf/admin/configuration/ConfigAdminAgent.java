@@ -233,25 +233,12 @@ public class ConfigAdminAgent implements SynchronousConfigurationListener, Confi
       cfgProperties = new DictionaryMap<>();
     }
     // compute the new mapping values
-    final Map<String, String> mappedProperties = mapping.resolve();
-    // convert mapped values based on metatype definition for this config
-    final ObjectClassDefinition metatype = getMetaType(cfg);
-
-    if (metatype != null) {
-      for (final AttributeDefinition def :
-          metatype.getAttributeDefinitions(ObjectClassDefinition.ALL)) {
-        if (def == null) {
-          continue;
-        }
-        final String key = def.getID();
-
-        if (mappedProperties.containsKey(key)) {
-          cfgProperties.put(
-              key, ConfigAdminAgent.parse(key, mappedProperties.remove(key), def.getType()));
-        }
-      }
+    final Map<String, Object> mappedProperties;
+    try {
+      mappedProperties = mapping.resolve();
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
     }
-    // anything left is a simple pass-thru as a string and hope for the best
     mappedProperties.forEach(cfgProperties::put);
     // finally keep the instance id up to date
     if (instanceId != null) {

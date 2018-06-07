@@ -102,6 +102,7 @@
     <feature name="admin-config-updater" version="${project.version}"
              description="Synchronizes config admin with the etc directory">
         <bundle>mvn:ddf.admin/admin-configuration-configupdater/${project.version}</bundle>
+        <bundle>mvn:org.codehaus.groovy/groovy-all/${groovy.version}</bundle>
     </feature>
 
     <feature name="admin-app" version="${project.version}"

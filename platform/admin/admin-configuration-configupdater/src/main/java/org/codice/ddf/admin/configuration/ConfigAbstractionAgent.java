@@ -14,7 +14,5 @@
 package org.codice.ddf.admin.configuration;
 
 public interface ConfigAbstractionAgent {
-
-  // String get(String id, String key);
   <T> T get(String basename, String property, Class<T> clazz);
 }

@@ -13,7 +13,6 @@
  */
 package org.codice.ddf.admin.configuration;
 
-import io.fabric8.karaf.core.properties.PlaceholderResolver;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -36,16 +35,16 @@ public class ConfigMappingServiceImpl
 
   private final Map<String, ConfigMappingImpl> mappings = new ConcurrentHashMap<>();
 
-  private final PlaceholderResolver resolver;
+  private final ConfigAbstractionAgent agent;
 
   private final List<ConfigMappingListener> listeners;
 
   private final Path path;
 
   public ConfigMappingServiceImpl(
-      PlaceholderResolver resolver, List<ConfigMappingListener> listeners) {
-    LOGGER.debug("ConfigMappingServiceImpl({}, {})", resolver, listeners);
-    this.resolver = resolver;
+      ConfigAbstractionAgent agent, List<ConfigMappingListener> listeners) {
+    LOGGER.debug("ConfigMappingServiceImpl()");
+    this.agent = agent;
     this.listeners = listeners;
     this.path = Paths.get(System.getProperty("ddf.home"), "etc", "mapping");
   }
@@ -55,7 +54,7 @@ public class ConfigMappingServiceImpl
     LOGGER.debug("ConfigMappingServiceImpl::init()");
     Stream.of(path.toFile().list()) // pre-load all mappings
         .map(FilenameUtils::getBaseName)
-        .forEach(name -> mappings.put(name, new ConfigMappingImpl(resolver, name)));
+        .forEach(name -> mappings.put(name, new ConfigMappingImpl(agent, name)));
   }
 
   @Override
@@ -129,7 +128,7 @@ public class ConfigMappingServiceImpl
               id,
               (i, m) -> {
                 if (m == null) {
-                  m = new ConfigMappingImpl(resolver, artifact);
+                  m = new ConfigMappingImpl(agent, artifact);
                 } else {
                   m.loadRules();
                 }

@@ -63,14 +63,9 @@
             <artifactId>platform-util</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.fabric8</groupId>
-            <artifactId>fabric8-karaf-core</artifactId>
-            <version>${fabric8.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fathzer</groupId>
-            <artifactId>javaluator</artifactId>
-            <version>3.0.2</version>
+            <groupId>org.codehaus.groovy</groupId>
+            <artifactId>groovy-all</artifactId>
+            <version>${groovy.version}</version>
         </dependency>
     </dependencies>
 

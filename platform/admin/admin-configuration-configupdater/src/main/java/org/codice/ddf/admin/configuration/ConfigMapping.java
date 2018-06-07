@@ -13,6 +13,7 @@
  */
 package org.codice.ddf.admin.configuration;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
 
@@ -23,5 +24,5 @@ public interface ConfigMapping {
 
   public boolean shouldBeUpdated(Map<String, Set<String>> ids);
 
-  public Map<String, String> resolve();
+  public Map<String, Object> resolve() throws IOException;
 }

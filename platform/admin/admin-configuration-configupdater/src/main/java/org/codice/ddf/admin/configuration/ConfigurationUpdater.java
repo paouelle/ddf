@@ -32,7 +32,6 @@ import java.security.PrivilegedExceptionAction;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Dictionary;
-import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -121,22 +120,6 @@ public class ConfigurationUpdater implements ConfigurationPersistencePlugin {
             LOGGER.debug("Exception occurred while trying to update config file. ", e);
           }
         });
-  }
-
-  @Override
-  public boolean handleExist(String pid) { // we don't reload anything on our own
-    return false;
-  }
-
-  @Override
-  public void handleLoad(ConfigurationContext context) {
-    // we don't reload anything on our own, Felix's ConfigInstaller does
-  }
-
-  @Override
-  public Enumeration<String> handleGet() {
-    // we don't reload anything on our own
-    return Collections.emptyEnumeration();
   }
 
   @Override

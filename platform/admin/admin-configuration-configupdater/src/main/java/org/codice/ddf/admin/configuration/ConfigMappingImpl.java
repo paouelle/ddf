@@ -13,7 +13,8 @@
  */
 package org.codice.ddf.admin.configuration;
 
-import io.fabric8.karaf.core.properties.PlaceholderResolver;
+import groovy.lang.GroovyRuntimeException;
+import groovy.util.Eval;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -23,12 +24,14 @@ import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.apache.commons.io.FilenameUtils;
+import org.codehaus.groovy.control.CompilationFailedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,23 +40,24 @@ public class ConfigMappingImpl implements ConfigMapping {
 
   private static final String DEPENDENT_CONFIGS = "dependent.configs";
 
-  private final PlaceholderResolver resolver;
+  private final ConfigAbstractionAgent agent;
   private final Path path;
   private final String id;
+  private final Configuration cfg = new Configuration();
   private final Map<String, String> rules = new HashMap<>();
   private final Map<String, Set<String>> dependentConfigs = new HashMap<>();
 
-  public ConfigMappingImpl(PlaceholderResolver resolver, String id) {
-    this(resolver, Paths.get(System.getProperty("ddf.home"), "etc", "mapping", id + ".mapping"));
+  public ConfigMappingImpl(ConfigAbstractionAgent agent, String id) {
+    this(agent, Paths.get(System.getProperty("ddf.home"), "etc", "mapping", id + ".mapping"));
   }
 
-  public ConfigMappingImpl(PlaceholderResolver resolver, File file) {
-    this(resolver, file.toPath());
+  public ConfigMappingImpl(ConfigAbstractionAgent agent, File file) {
+    this(agent, file.toPath());
   }
 
-  public ConfigMappingImpl(PlaceholderResolver resolver, Path path) {
-    LOGGER.debug("ConfigMappingImpl({}, {})", resolver, path);
-    this.resolver = resolver;
+  public ConfigMappingImpl(ConfigAbstractionAgent agent, Path path) {
+    LOGGER.debug("ConfigMappingImpl(agent, {})", path);
+    this.agent = agent;
     this.path = path;
     this.id = FilenameUtils.getBaseName(path.toString());
     loadRules();
@@ -96,14 +100,31 @@ public class ConfigMappingImpl implements ConfigMapping {
   }
 
   @Override
-  public Map<String, String> resolve() {
-    final Map<String, String> properties;
+  public Map<String, Object> resolve() throws IOException {
+    final Map<String, Object> properties;
 
     synchronized (rules) {
       properties = new HashMap<>(rules);
+      for (Iterator<Entry<String, Object>> i = properties.entrySet().iterator(); i.hasNext(); ) {
+        final Map.Entry<String, Object> e = i.next();
+        final Object value = e.getValue();
+
+        if (value instanceof String) {
+          try {
+            e.setValue(Eval.me("cfg", cfg, (String) value));
+          } catch (CompilationFailedException ge) {
+            LOGGER.error(
+                "failed to compile groovy script [{}] for mapping [{}]: {}", value, id, ge);
+            throw new IOException("invalid groovy script: " + value, ge);
+          } catch (GroovyRuntimeException ge) {
+            LOGGER.error(
+                "failed to evaluate groovy script [{}] for mapping [{}]: {}", value, id, ge);
+            throw new IOException("error while evaluating groovy script: " + value, ge);
+          }
+        }
+      }
     }
-    resolver.replaceAll((Map<String, Object>) (Map) properties);
-    LOGGER.debug("ConfigMappingImpl[{}].resolve()", id, properties);
+    LOGGER.debug("ConfigMappingImpl[{}].resolve() = {}", id, properties);
     return properties;
   }
 
@@ -121,30 +142,34 @@ public class ConfigMappingImpl implements ConfigMapping {
     try (final Reader r = new FileReader(f);
         final BufferedReader br = new BufferedReader(r)) {
       p.load(r);
-      final Map<String, String> props = (Map<String, String>) (Map) p;
-      final String dependentString = props.remove(ConfigMappingImpl.DEPENDENT_CONFIGS);
-
-      if (dependentString == null) {
-        throw new IOException("missing '" + ConfigMappingImpl.DEPENDENT_CONFIGS + "'");
-      }
-      final Map<String, Set<String>> dependents =
-          Stream.of(dependentString.split(","))
-              .map(c -> c.split("\\."))
-              .collect(
-                  Collectors.groupingBy(
-                      s -> s[0], HashMap::new, Collectors.mapping(s -> s[1], Collectors.toSet())));
-
       synchronized (rules) {
         rules.clear();
-        rules.putAll(props);
+        rules.putAll((Map<String, String>) (Map) p);
         dependentConfigs.clear();
-        dependentConfigs.putAll(dependents);
+        resolve(); // first resolution to compute the initial dependent configuration
       }
       LOGGER.debug("ConfigMappingImpl[{}].loadRules() - rules = {}", id, rules);
       LOGGER.debug("ConfigMappingImpl[{}].loadRules() - dependent = {}", id, dependentConfigs);
     } catch (IOException e) {
       LOGGER.debug("ConfigMappingImpl[{}].loadRules() - failed to load rules: {}", id, e, e);
       throw new UncheckedIOException(e);
+    }
+  }
+
+  public class Configuration {
+    private Configuration() {}
+
+    public Object get(String id, String key) {
+      dependentConfigs.compute(
+          id,
+          (i, keys) -> {
+            if (keys == null) {
+              keys = new HashSet<>();
+            }
+            keys.add(key);
+            return keys;
+          });
+      return agent.get(id, key, Object.class);
     }
   }
 }

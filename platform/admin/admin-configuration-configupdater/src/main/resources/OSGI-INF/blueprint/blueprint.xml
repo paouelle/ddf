@@ -37,16 +37,8 @@
                interface="ddf.security.encryption.EncryptionService"
                availability="mandatory"/>
 
-    <reference id="fabric8.resolver"
-               interface="io.fabric8.karaf.core.properties.PlaceholderResolver"
-               availability="mandatory"/>
-
     <reference id="config.mapper.service"
                interface="org.codice.ddf.admin.configuration.ConfigMappingService"
-               availability="optional"/>
-
-    <reference id="config.abstraction.service"
-               interface="org.codice.ddf.admin.configuration.ConfigAbstractionAgent"
                availability="optional"/>
 
     <bean id="configUpdater" class="org.codice.ddf.admin.configuration.ConfigurationUpdater">
@@ -77,24 +69,6 @@
     <bean id="sorted.abstract.listeners" class="org.codice.ddf.platform.util.SortedServiceList"/>
 
     <service auto-export="interfaces">
-        <bean class="org.codice.ddf.admin.configuration.IfPropertiesFunction"/>
-    </service>
-
-    <service auto-export="interfaces">
-        <bean class="org.codice.ddf.admin.configuration.ConfigAbstractionPropertiesFunction">
-            <argument ref="config.abstraction.service"/>
-        </bean>
-    </service>
-
-    <service auto-export="interfaces">
-        <bean class="org.codice.ddf.admin.configuration.ConfigMappingServiceImpl"
-              init-method="init">
-            <argument ref="fabric8.resolver"/>
-            <argument ref="sorted.mapping.listeners"/>
-        </bean>
-    </service>
-
-    <service auto-export="interfaces">
         <bean class="org.codice.ddf.admin.configuration.ConfigAdminAgent"
               init-method="init">
             <argument ref="osgi.configAdmin"/>
@@ -115,6 +89,14 @@
             <value>org.apache.felix.fileinstall.ArtifactInstaller</value>
             <value>org.codice.ddf.admin.configuration.ConfigAbstractionAgent</value>
         </interfaces>
+    </service>
+
+    <service auto-export="interfaces">
+        <bean class="org.codice.ddf.admin.configuration.ConfigMappingServiceImpl"
+              init-method="init">
+            <argument ref="configAbstractionAgent"/>
+            <argument ref="sorted.mapping.listeners"/>
+        </bean>
     </service>
 
 </blueprint>
