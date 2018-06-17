@@ -27,8 +27,9 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.codice.ddf.config.Config;
 import org.codice.ddf.config.ConfigEvent;
-import org.codice.ddf.config.ConfigInstance;
+import org.codice.ddf.config.ConfigGroup;
 import org.codice.ddf.config.ConfigService;
+import org.codice.ddf.config.ConfigSingleton;
 import org.codice.ddf.config.mapping.ConfigMapping;
 import org.codice.ddf.config.mapping.ConfigMappingException;
 import org.codice.ddf.config.mapping.ConfigMappingProvider;
@@ -41,12 +42,17 @@ public class ConfigMappingImpl implements ConfigMapping {
   // marker to indicate that a config mapping depends on all instances/ids of a given config type
   private static final Set<String> ALL = Collections.emptySet();
 
+  // marker to representing a fake instance id representing any instances
+  private static final String ANY = "*";
+
   private final ConfigService config;
 
   private final ConfigMapping.Id id;
 
   private final SortedSet<ConfigMappingProvider> providers;
 
+  // keyed by config type with corresponding set of instances or ALL if not a group or dependent on
+  // all instances
   private final Map<Class<? extends Config>, Set<String>> dependents = new ConcurrentHashMap<>();
 
   public ConfigMappingImpl(
@@ -55,7 +61,13 @@ public class ConfigMappingImpl implements ConfigMapping {
     this.id = id;
     this.providers =
         Collections.synchronizedSortedSet(providers.collect(Collectors.toCollection(TreeSet::new)));
-    resolve(); // first resolution to compute the initial dependents
+    try {
+      // first resolution to compute the initial dependents, use the ANY instance if none defined
+      // just in case the providers are referencing it. This will be useful providers capable of
+      // providing for any instances
+      resolve(ConfigMapping.Id.of(id.getName(), id.getInstance().orElse(ConfigMappingImpl.ANY)));
+    } catch (ConfigMappingException e) { // ignore
+    }
   }
 
   @Override
@@ -107,21 +119,21 @@ public class ConfigMappingImpl implements ConfigMapping {
   }
 
   boolean isAffectedBy(Config config) {
-    final Set<String> instances = dependents.get(config.getClass());
+    final Set<String> instances = dependents.get(config.getType());
 
     if (instances == null) {
       LOGGER.debug(
-          "ConfigMappingImpl[{}].isAffectedBy({}) = false; class not supported", id, config);
+          "ConfigMappingImpl[{}].isAffectedBy({}) = false; type not supported", id, config);
       return false;
-    } else if (!(config instanceof ConfigInstance)) {
-      LOGGER.debug("ConfigMappingImpl[{}].isAffectedBy({}) = true; class supported", id, config);
+    } else if (!(config instanceof ConfigGroup)) {
+      LOGGER.debug("ConfigMappingImpl[{}].isAffectedBy({}) = true; type supported", id, config);
       return true;
-    } else if (instances == ConfigMappingImpl.ALL) {
+    } else if (instances == ConfigMappingImpl.ALL) { // identity check
       LOGGER.debug(
           "ConfigMappingImpl[{}].isAffectedBy({}) = true; all instances supported", id, config);
       return true;
     }
-    final String instanceId = ((ConfigInstance) config).getId();
+    final String instanceId = ((ConfigGroup) config).getId();
 
     if (instances.contains(instanceId)) {
       LOGGER.debug(
@@ -141,12 +153,8 @@ public class ConfigMappingImpl implements ConfigMapping {
 
   @Override
   public Map<String, Object> resolve() throws ConfigMappingException {
-    final Map<String, Object> properties = new HashMap<>();
+    final Map<String, Object> properties = resolve(id);
 
-    synchronized (providers) {
-      // process them from lowes priority to highest such that higher one can override
-      providers.stream().map(p -> p.provide(id, config)).forEach(properties::putAll);
-    }
     LOGGER.debug("ConfigMappingImpl[{}].resolve() = {}", id, properties);
     return properties;
   }
@@ -171,6 +179,16 @@ public class ConfigMappingImpl implements ConfigMapping {
     return String.format("ConfigMappingImpl[%s, providers=%s]", id, providers);
   }
 
+  private Map<String, Object> resolve(ConfigMapping.Id id) throws ConfigMappingException {
+    final Map<String, Object> properties = new HashMap<>();
+
+    synchronized (providers) {
+      // process them from lowest priority to highest such that higher one can override
+      providers.stream().map(p -> p.provide(id, config)).forEach(properties::putAll);
+    }
+    return properties;
+  }
+
   /**
    * Proxy config service class use to intercept config retrieval in order to help identify what
    * this config mapping depends on.
@@ -183,33 +201,40 @@ public class ConfigMappingImpl implements ConfigMapping {
     }
 
     @Override
-    public <T extends Config> Optional<T> get(Class<T> type) {
+    public <T extends ConfigSingleton> Optional<T> get(Class<T> clazz) {
       // insert or replace the entry with an indicator that we depend on all instances for `type`
-      dependents.put(type, ConfigMappingImpl.ALL);
-      return config.get(type);
+      dependents.put(Config.getType(clazz), ConfigMappingImpl.ALL);
+      return config.get(clazz);
     }
 
     @Override
-    public <T extends ConfigInstance> Optional<T> get(Class<T> type, String id) {
+    public <T extends ConfigGroup> Optional<T> get(Class<T> clazz, String id) {
       // insert this specific id for the given type unless we already depend on all
       dependents.compute(
-          type,
+          Config.getType(clazz),
           (t, set) -> {
+            if (set == ConfigMappingImpl.ALL) { // identity check
+              // this type is dependent on all instances so nothing to do
+              return set;
+            }
             if (set == null) {
               set = new ConcurrentSkipListSet<>();
+            }
+            if (id != ConfigMappingImpl.ANY) { // identity check
               set.add(id);
-            } else if (set != ConfigMappingImpl.ALL) {
-              set.add(id);
-            } // else - this type is dependent on ALL so nothing to do
+            } // else - id used during first resolution when none defined; don't cache it
             return set;
           });
-      return config.get(type, id);
+      return config.get(clazz, id);
     }
 
     @Override
-    public <T extends ConfigInstance> Stream<T> configs(Class<T> type) {
+    public <T extends ConfigGroup> Stream<T> configs(Class<T> type) {
       // insert or replace the entry with an indicator that we depend on all instances for `type`
-      dependents.put(type, ConfigMappingImpl.ALL);
+      // even though we might only care about a subclass of the actual config object type, we will
+      // still mark the whole config object type with ALL since we cannot validate which actual
+      // subclasses might come in later - at worst, we might recompute more often then required
+      dependents.put(Config.getType(type), ConfigMappingImpl.ALL);
       return config.configs(type);
     }
   }

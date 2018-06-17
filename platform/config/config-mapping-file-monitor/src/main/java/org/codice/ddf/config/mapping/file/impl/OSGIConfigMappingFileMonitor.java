@@ -11,7 +11,7 @@
  * License is distributed along with this program and can be found at
  * <http://www.gnu.org/licenses/lgpl.html>.
  */
-package org.codice.ddf.config.mapping.file;
+package org.codice.ddf.config.mapping.file.impl;
 
 import java.util.Set;
 import org.apache.felix.fileinstall.ArtifactInstaller;
@@ -26,9 +26,11 @@ public class OSGIConfigMappingFileMonitor extends ConfigMappingFileMonitor
 
   public OSGIConfigMappingFileMonitor(ConfigMappingService mapper) {
     super(mapper);
+    LOGGER.debug("OSGIConfigMappingFileMonitor({})", mapper);
   }
 
   public OSGIConfigMappingFileMonitor(ConfigMappingService mapper, Set<String> paths) {
     super(mapper, paths);
+    LOGGER.debug("OSGIConfigMappingFileMonitor({}, {})", mapper, paths);
   }
 }

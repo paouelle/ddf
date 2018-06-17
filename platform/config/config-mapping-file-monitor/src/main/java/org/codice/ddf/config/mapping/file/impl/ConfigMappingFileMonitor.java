@@ -11,7 +11,7 @@
  * License is distributed along with this program and can be found at
  * <http://www.gnu.org/licenses/lgpl.html>.
  */
-package org.codice.ddf.config.mapping.file;
+package org.codice.ddf.config.mapping.file.impl;
 
 import com.google.common.collect.ImmutableSet;
 import java.io.Closeable;
@@ -49,9 +49,11 @@ public class ConfigMappingFileMonitor implements Closeable {
 
   public ConfigMappingFileMonitor(ConfigMappingService mapper) {
     this(mapper, ImmutableSet.of(System.getProperty("ddf.home") + "/etc/mappings"));
+    LOGGER.debug("ConfigMappingFileMonitor({})", mapper);
   }
 
   public ConfigMappingFileMonitor(ConfigMappingService mapper, Set<String> paths) {
+    LOGGER.debug("ConfigMappingFileMonitor({}, {})", mapper, paths);
     this.mapper = mapper;
     this.paths = paths.stream().map(File::new).map(File::toPath).collect(Collectors.toSet());
   }
@@ -137,7 +139,8 @@ public class ConfigMappingFileMonitor implements Closeable {
     final Path path = file.toPath();
     final String name = file.getName();
 
-    return name.endsWith(".json") && paths.stream().anyMatch(path::startsWith);
+    return name.endsWith(GroovyConfigMappingReader.MAPPING_EXTENSION)
+        && paths.stream().anyMatch(path::startsWith);
   }
 
   @Nullable

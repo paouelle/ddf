@@ -11,7 +11,7 @@
  * License is distributed along with this program and can be found at
  * <http://www.gnu.org/licenses/lgpl.html>.
  */
-package org.codice.ddf.config.osgi;
+package org.codice.ddf.config.agent.osgi;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -19,8 +19,10 @@ import java.lang.reflect.Array;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Dictionary;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
@@ -33,7 +35,12 @@ import java.util.Spliterators;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
+import javax.annotation.Nullable;
 import org.apache.commons.lang.ArrayUtils;
+import org.codice.ddf.config.ConfigEvent;
+import org.codice.ddf.config.ConfigGroup;
+import org.codice.ddf.config.ConfigListener;
+import org.codice.ddf.config.ConfigService;
 import org.codice.ddf.config.mapping.ConfigMapping;
 import org.codice.ddf.config.mapping.ConfigMappingEvent;
 import org.codice.ddf.config.mapping.ConfigMappingEvent.Type;
@@ -57,7 +64,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class ConfigAdminAgent
-    implements SynchronousConfigurationListener, ServiceListener, ConfigMappingListener, Closeable {
+    implements SynchronousConfigurationListener,
+        ServiceListener,
+        ConfigMappingListener,
+        ConfigListener,
+        Closeable {
   public static final String INSTANCE_KEY = "org.codice.ddf.config.instance";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ConfigAdminAgent.class);
@@ -66,11 +77,19 @@ public class ConfigAdminAgent
 
   private final ConfigMappingService mapper;
 
+  private final ConfigService config;
+
+  // keyed by config group type with the corresponding lists of factory pids to create objects for
+  private final Map<Class<? extends ConfigGroup>, String> factories =
+      Collections.synchronizedMap(new HashMap<>());
+
   private final Map<String, Dictionary<String, Object>> cache = new ConcurrentHashMap<>();
 
-  public ConfigAdminAgent(ConfigurationAdmin configAdmin, ConfigMappingService mapper) {
+  public ConfigAdminAgent(
+      ConfigurationAdmin configAdmin, ConfigMappingService mapper, ConfigService config) {
     this.configAdmin = configAdmin;
     this.mapper = mapper;
+    this.config = config;
   }
 
   @SuppressWarnings("unused" /* called by blueprint */)
@@ -84,7 +103,7 @@ public class ConfigAdminAgent
 
     try {
       // then process all existing config objects
-      configurations().map(this::updated).forEach(processed::add);
+      configurations().map(this::updateConfiguration).forEach(processed::add);
     } catch (IOException | ConfigMappingException e) { // ignore
       LOGGER.error("failed to initialize existing config objects: {}", e.getMessage());
       LOGGER.debug("initialization failure: {}", e, e);
@@ -97,7 +116,7 @@ public class ConfigAdminAgent
           .filter(m -> !processed.contains(m)) // filter out those we already processed above
           .filter(Optional::isPresent)
           .map(Optional::get)
-          .forEach(this::updated);
+          .forEach(this::updateConfigObjectFor);
     } catch (ConfigMappingException e) { // ignore
       LOGGER.error("failed to initialize registered services: {}", e.getMessage());
       LOGGER.debug("initialization failure: {}", e, e);
@@ -112,6 +131,17 @@ public class ConfigAdminAgent
     context.removeServiceListener(this);
   }
 
+  @SuppressWarnings("unused" /* called from blueprint */)
+  public void setFactories(Map<Class<? extends ConfigGroup>, String> factories) {
+    // TODO: determine what mappings no longer exist so we can remove the corresponding config objs
+    // process all configured config instances we have to monitor
+    synchronized (this.factories) {
+      this.factories.clear();
+      this.factories.putAll(factories);
+    }
+    factories.forEach(this::findConfigMappingsFor);
+  }
+
   @Override
   public void serviceChanged(ServiceEvent event) {
     final ServiceReference<?> ref = event.getServiceReference();
@@ -123,7 +153,7 @@ public class ConfigAdminAgent
           .map(mapper::getMapping)
           .filter(Optional::isPresent)
           .map(Optional::get)
-          .forEach(this::updated);
+          .forEach(this::updateConfigObjectFor);
     }
   }
 
@@ -138,7 +168,7 @@ public class ConfigAdminAgent
         case ConfigurationEvent.CM_LOCATION_CHANGED:
           final ConfigurationAdmin cfgAdmin = getService(event.getReference());
 
-          getConfiguration(cfgAdmin, event.getPid()).ifPresent(this::updated);
+          getConfiguration(cfgAdmin, event.getPid()).ifPresent(this::updateConfiguration);
           break;
         case ConfigurationEvent.CM_DELETED:
           cache.remove(pid);
@@ -156,10 +186,31 @@ public class ConfigAdminAgent
   public void mappingChanged(ConfigMappingEvent event) {
     LOGGER.debug("ConfigAdminAgent:mappingChanged({})", event);
     if (event.getType() == Type.REMOVED) {
-      // just leave it alone - should we delete the corresponding config object???
+      // just leave it alone - TODO: should we delete the corresponding config object???
       return;
     }
-    updated(event.getMapping());
+    updateConfigObjectFor(event.getMapping());
+  }
+
+  @Override
+  public void configChanged(ConfigEvent event) {
+    LOGGER.debug("ConfigAdminAgent:configChanged({})", event);
+    // only check updates for config instances that maps to factory pids we are monitoring
+    // start with config instances that were removed
+    event
+        .removedConfigs()
+        .filter(ConfigGroup.class::isInstance)
+        .map(ConfigGroup.class::cast)
+        .forEach(this::removeConfigObjectFor);
+    // handle new and updated ones the same way to make sure we have corresponding cfg objects if
+    // for whatever reasons we had missed them
+    // for updates of existing mappings, these will be handled by the mapper and we will get
+    // notified if there is any changes, what we care about here is simply to detect those for which
+    // we do not have a corresponding config object
+    Stream.concat(event.addedConfigs(), event.updatedConfigs())
+        .filter(ConfigGroup.class::isInstance)
+        .map(ConfigGroup.class::cast)
+        .forEach(this::findConfigMappingFor);
   }
 
   BundleContext getBundleContext() {
@@ -171,31 +222,74 @@ public class ConfigAdminAgent
     throw new IllegalStateException("missing bundle for ConfigAdminAgent");
   }
 
-  private void updated(ConfigMapping mapping) {
-    LOGGER.debug("ConfigAdminAgent:updated({})", mapping);
+  private void findConfigMappingsFor(Class<? extends ConfigGroup> type, String factoryPid) {
+    LOGGER.debug("ConfigAdminAgent:findConfigMappingsFor({}, {})", type, factoryPid);
+    config.configs(type).forEach(c -> findConfigMappingFor(c, factoryPid));
+  }
+
+  private void findConfigMappingFor(ConfigGroup cfgInstance) {
+    LOGGER.debug("ConfigAdminAgent:findConfigMappingFor({})", cfgInstance);
+    final String factoryPid = factories.get(cfgInstance.getType());
+
+    if (factoryPid == null) { // not monitoring those so ignore
+      return;
+    }
+    findConfigMappingFor(cfgInstance, factoryPid);
+  }
+
+  private void findConfigMappingFor(ConfigGroup cfgInstance, String factoryPid) {
+    final String type = cfgInstance.getType().getName();
+    final String id = cfgInstance.getId();
+
+    LOGGER.debug("ConfigAdminAgent:findConfigMappingFor({}-{}, {})", type, id, factoryPid);
+    final ConfigMapping mapping = mapper.getMapping(factoryPid, id).orElse(null);
+
+    if (mapping != null) {
+      LOGGER.debug(
+          "found config mapping [{}] for config instance [{}-{}]", mapping.getId(), type, id);
+      updateConfigObjectFor(mapping);
+    } else {
+      LOGGER.debug("no config mappings found for config instance [{}-{}]", type, id);
+    }
+  }
+
+  private void removeConfigObjectFor(ConfigGroup cfgInstance) {
+    LOGGER.debug("ConfigAdminAgent:removeConfigObjectFor({})", cfgInstance);
+    final Class<? extends ConfigGroup> type = cfgInstance.getType();
+    final String factoryPid = factories.get(type);
+
+    if (factoryPid == null) { // not monitoring those so ignore
+      return;
+    }
+    final String typeName = type.getName();
+    final String id = cfgInstance.getId();
+
+    try {
+      final Configuration cfg = getConfiguration(factoryPid, id);
+
+      if (cfg != null) {
+        cfg.delete(); // cache will be cleanup when we get the even back from cfg admin
+        LOGGER.debug("deleted config object '{}-{}' as {}", factoryPid, id, cfg.getPid());
+      }
+    } catch (InvalidSyntaxException | IOException e) {
+      LOGGER.warn(
+          "failed to remove config object for config instance '{}-{}': {}",
+          typeName,
+          id,
+          e.getMessage());
+      LOGGER.debug("config object removal failure: {}", e, e);
+    }
+  }
+
+  private void updateConfigObjectFor(ConfigMapping mapping) {
+    LOGGER.debug("ConfigAdminAgent:updateConfigObjectFor({})", mapping);
     try {
       final String instance = mapping.getId().getInstance().orElse(null);
       final String pid = mapping.getId().getName();
       final Configuration cfg;
 
       if (instance != null) { // a managed service factory
-        final Configuration[] cfgs =
-            configAdmin.listConfigurations(
-                String.format(
-                    "(&(service.factoryPid=%s)(%s=%s))",
-                    pid,
-                    ConfigAdminAgent.INSTANCE_KEY,
-                    ConfigAdminAgent.escapeFilterValue(instance)));
-
-        if (ArrayUtils.isNotEmpty(cfgs)) {
-          cfg = cfgs[0];
-        } else {
-          // get or create the first version
-          // location as null to make sure it is bound to the first bundles that registers the
-          // managed service factory
-          cfg = configAdmin.createFactoryConfiguration(pid, null);
-          LOGGER.debug("created new config object '{}-{}' as {}", pid, instance, cfg.getPid());
-        }
+        cfg = getOrCreateConfiguration(pid, instance);
       } else {
         // get or create the first version
         // location as null to make sure it is bound to the first bundles that registers the
@@ -203,18 +297,18 @@ public class ConfigAdminAgent
         cfg = configAdmin.getConfiguration(pid, null);
         LOGGER.debug("created/updated config object '{}'", pid);
       }
-      updated(cfg, mapping);
+      updateConfigurationWithMapping(cfg, mapping);
     } catch (InvalidSyntaxException | ConfigMappingException | IOException e) {
       LOGGER.warn(
-          "failed to process config mapping update for config object '{}': {}",
+          "failed to update config object for config mapping '{}': {}",
           mapping.getId(),
           e.getMessage());
-      LOGGER.debug("config mapping update failure: {}", e, e);
+      LOGGER.debug("config object update failure: {}", e, e);
     }
   }
 
-  private Optional<ConfigMapping> updated(Configuration cfg) {
-    LOGGER.debug("ConfigAdminAgent:updated({})", cfg);
+  private Optional<ConfigMapping> updateConfiguration(Configuration cfg) {
+    LOGGER.debug("ConfigAdminAgent:updateConfiguration({})", cfg);
     final String factoryPid = cfg.getFactoryPid();
     final Optional<ConfigMapping> mapping;
     final String pid = cfg.getPid();
@@ -248,12 +342,12 @@ public class ConfigAdminAgent
     } else {
       mapping = mapper.getMapping(pid);
     }
-    mapping.ifPresent(m -> updated(cfg, m));
+    mapping.ifPresent(m -> updateConfigurationWithMapping(cfg, m));
     return mapping;
   }
 
-  private void updated(Configuration cfg, ConfigMapping mapping) {
-    LOGGER.debug("ConfigAdminAgent:updated({}, {})", cfg, mapping);
+  private void updateConfigurationWithMapping(Configuration cfg, ConfigMapping mapping) {
+    LOGGER.debug("ConfigAdminAgent:updateConfigurationWithMapping({}, {})", cfg, mapping);
     final String pid = cfg.getPid();
 
     try {
@@ -261,40 +355,45 @@ public class ConfigAdminAgent
       final String instance = mapping.getId().getInstance().orElse(null);
 
       // compute the new mapping values
-      mapping.resolve().forEach(properties::put);
-      // keep the instance up to date
-      if (instance != null) {
-        properties.put(ConfigAdminAgent.INSTANCE_KEY, instance);
-      } else {
-        properties.remove(ConfigAdminAgent.INSTANCE_KEY);
-      }
-      // only update configAdmin if the dictionary content has changed
-      final Dictionary<String, Object> cachedProperties = cache.get(pid);
-
-      if ((cachedProperties == null) || !ConfigAdminAgent.equals(cachedProperties, properties)) {
-        LOGGER.debug("updating config [{}] in config admin with: {}", pid, properties);
-        update(cfg, properties);
-      }
+      mapping.resolve().forEach((k, v) -> ConfigAdminAgent.putOrRemove(properties, k, v));
+      updateConfigurationProperties(cfg, instance, properties);
     } catch (IOException | ConfigMappingException e) {
       LOGGER.error("failed to update config object '{}': {}", pid, e.getMessage());
-      LOGGER.debug("config update failure", e);
+      LOGGER.debug("config object update failure", e);
     }
   }
 
-  private void update(Configuration cfg, Dictionary<String, Object> properties) throws IOException {
+  private void updateConfigurationProperties(
+      Configuration cfg, @Nullable String instance, @Nullable Dictionary<String, Object> properties)
+      throws IOException {
     final String pid = cfg.getPid();
-    Dictionary<String, Object> old = null;
+    final Dictionary<String, Object> cachedProperties = cache.get(pid);
 
-    try {
-      old = cache.put(pid, properties);
-      cfg.update(properties);
-    } catch (IOException e) {
-      if (old == null) {
-        cache.remove(pid);
-      } else {
-        cache.put(pid, old);
+    if (properties == null) { // initialize the properties
+      properties = new DictionaryMap<>();
+    }
+    // keep the instance up to date
+    if (instance != null) {
+      properties.put(ConfigAdminAgent.INSTANCE_KEY, instance);
+    } else {
+      properties.remove(ConfigAdminAgent.INSTANCE_KEY);
+    }
+    // only update configAdmin if the dictionary content has changed
+    if ((cachedProperties == null) || !ConfigAdminAgent.equals(cachedProperties, properties)) {
+      LOGGER.debug("updating config object [{}] with: {}", pid, properties);
+      Dictionary<String, Object> old = null;
+
+      try {
+        old = cache.put(pid, properties);
+        cfg.update(properties);
+      } catch (IOException e) {
+        if (old == null) {
+          cache.remove(pid);
+        } else {
+          cache.put(pid, old);
+        }
+        throw e;
       }
-      throw e;
     }
   }
 
@@ -306,6 +405,40 @@ public class ConfigAdminAgent
     final Configuration[] configs = configAdmin.listConfigurations(filter);
 
     return ArrayUtils.isNotEmpty(configs) ? Optional.of(configs[0]) : Optional.empty();
+  }
+
+  @Nullable
+  private Configuration getConfiguration(String factoryPid, String instance)
+      throws InvalidSyntaxException, IOException {
+    final Configuration[] cfgs =
+        configAdmin.listConfigurations(
+            String.format(
+                "(&(service.factoryPid=%s)(%s=%s))",
+                factoryPid,
+                ConfigAdminAgent.INSTANCE_KEY,
+                ConfigAdminAgent.escapeFilterValue(instance)));
+
+    if (ArrayUtils.isNotEmpty(cfgs)) {
+      LOGGER.debug("found config object '{}-{}' as {}", factoryPid, instance, cfgs[0].getPid());
+      return cfgs[0];
+    }
+    LOGGER.debug("config object '{}-{}' not found", factoryPid, instance);
+    return null;
+  }
+
+  private Configuration getOrCreateConfiguration(String factoryPid, String instance)
+      throws InvalidSyntaxException, IOException {
+    Configuration cfg = getConfiguration(factoryPid, instance);
+
+    if (cfg != null) {
+      return cfg;
+    }
+    // create the first version
+    // location as null to make sure it is bound to the first bundles that registers the
+    // managed service factory
+    cfg = configAdmin.createFactoryConfiguration(factoryPid, null);
+    LOGGER.debug("created new config object '{}-{}' as {}", factoryPid, instance, cfg.getPid());
+    return cfg;
   }
 
   private Stream<Configuration> configurations() throws IOException {
@@ -323,6 +456,14 @@ public class ConfigAdminAgent
   private <S> S getService(ServiceReference<S> serviceReference) {
     return AccessController.doPrivileged(
         (PrivilegedAction<S>) () -> getBundleContext().getService(serviceReference));
+  }
+
+  private static void putOrRemove(Dictionary<String, Object> properties, String key, Object value) {
+    if (value != null) {
+      properties.put(key, value);
+    } else {
+      properties.remove(key);
+    }
   }
 
   private static Dictionary<String, Object> getProperties(Configuration cfg) {

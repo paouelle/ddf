@@ -1,0 +1,8 @@
+{
+    "names": "DDF_Custom_Mime_Type_Resolver",
+    "instances": "bob",
+    "ranking": 10,
+    "rules": {
+        "name": "'Bundle ' + config.get(MimeTypeConfig, instance)?.name"
+    }
+}
