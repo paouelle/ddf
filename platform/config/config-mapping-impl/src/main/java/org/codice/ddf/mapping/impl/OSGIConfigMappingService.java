@@ -18,6 +18,9 @@ import java.util.List;
 import org.codice.ddf.config.ConfigService;
 import org.codice.ddf.config.mapping.ConfigMappingListener;
 import org.codice.ddf.config.mapping.ConfigMappingProvider;
+import org.osgi.framework.Bundle;
+import org.osgi.framework.BundleContext;
+import org.osgi.framework.FrameworkUtil;
 import org.osgi.framework.ServiceReference;
 import org.osgi.util.tracker.ServiceTracker;
 import org.osgi.util.tracker.ServiceTrackerCustomizer;
@@ -47,6 +50,15 @@ public class OSGIConfigMappingService extends ConfigMappingServiceImpl implement
     tracker.close();
   }
 
+  BundleContext getBundleContext() {
+    final Bundle bundle = FrameworkUtil.getBundle(OSGIConfigMappingService.class);
+
+    if (bundle != null) {
+      return bundle.getBundleContext();
+    }
+    throw new IllegalStateException("missing bundle for ConfigMappingServiceImpl");
+  }
+
   class Customizer
       implements ServiceTrackerCustomizer<ConfigMappingProvider, OSGIConfigMappingProvider> {
     @Override
@@ -63,8 +75,7 @@ public class OSGIConfigMappingService extends ConfigMappingServiceImpl implement
     public void modifiedService(
         ServiceReference<ConfigMappingProvider> ref, OSGIConfigMappingProvider provider) {
       LOGGER.debug("updating OSGI provider: {}", provider);
-      // we need to unbind that provider, then update its properties and finally rebind it
-      unbind(provider);
+      // update its service properties and rebind it
       provider.reinit();
       bind(provider);
     }

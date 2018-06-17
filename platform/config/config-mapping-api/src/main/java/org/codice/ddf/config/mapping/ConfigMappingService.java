@@ -24,12 +24,11 @@ public interface ConfigMappingService {
   public static final String MAPPINGS_DOCUMENTS_LOCATION = "OSGI-INF/mappings";
 
   /**
-   * Binds a new provider to this mapping service.
+   * Binds a new provider to this mapping service or rebind it if it was already bound.
    *
    * @param provider the provider to be bound
-   * @return <code>true</code> if the provider was bound; <code>false</code> if it was already bound
    */
-  public boolean bind(ConfigMappingProvider provider);
+  public void bind(ConfigMappingProvider provider);
 
   /**
    * Unbinds a provider from this mapping service.

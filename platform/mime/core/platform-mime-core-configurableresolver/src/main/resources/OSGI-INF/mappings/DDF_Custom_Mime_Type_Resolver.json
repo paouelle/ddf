@@ -1,0 +1,11 @@
+{
+    "names": "DDF_Custom_Mime_Type_Resolver",
+    "instances": "*",
+    "setup": "mime = config.get(MimeTypeConfig, instance)",
+    "rules": {
+        "customMimeTypes": "mime?.mappings().map { (it.extension + '=' + it.mimeType) - ~/^\\./ }.collect() as String[]",
+        "name": "'Bundle-All ' + mime?.name",
+        "priority": "mime?.priority",
+        "schema": "(mime instanceof SchemaMimeTypeConfig) ? mime?.schema : null"
+    }
+}

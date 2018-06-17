@@ -11,10 +11,20 @@
  * License is distributed along with this program and can be found at
  * <http://www.gnu.org/licenses/lgpl.html>.
  */
-package org.codice.ddf.config.mapping;
+package org.codice.ddf.config;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Inherited;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
 /**
- * Extension to the {@link ConfigMappingProvider} interface to report constant information about the
- * provider.
+ * Annotation used on configuration interfaces to identify a specific type of configuration object.
+ * All sub-interfaces from the interface with this annotation will considered to be of the same
+ * type.
  */
-public interface ConfigMappingInformation extends ConfigMappingProvider {}
+@Inherited
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface ConfigType {}

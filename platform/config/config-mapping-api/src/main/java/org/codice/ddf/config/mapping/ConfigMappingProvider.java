@@ -32,7 +32,7 @@ import org.codice.ddf.config.mapping.ConfigMapping.Id;
  * a higher priority.
  *
  * <p>For providers registered as OSGI services, ranking and which configuration mappings as
- * returned by the {@link #getRank()}, {@link #canProvideFor(ConfigMapping)}, and {@link
+ * returned by the {@link #getRanking()}, {@link #canProvideFor(ConfigMapping)}, and {@link
  * #canProvideFor(Id)} methods are ignored in favor of using the service ranking and {@link
  * #MAPPING_NAME}, and {@link #MAPPING_INSTANCE} service properties registered with the service.
  * When a ranking tie in exist, whichever service that was first registered with the service
@@ -40,9 +40,12 @@ import org.codice.ddf.config.mapping.ConfigMapping.Id;
  */
 public interface ConfigMappingProvider extends Comparable<ConfigMappingProvider> {
   /**
-   * Service property to signal that this service is able to provide mapped dictionaries for the
-   * given mapping name (e.g. managed service factory PID). The type of this service property is
-   * <code>String+</code>.
+   * Optional service property to signal that this service is able to provide mapped dictionaries
+   * for the given mapping name (e.g. managed service factory PID). The type of this service
+   * property is <code>String+</code>. If specified when registered as a service, the information
+   * along with the information provided by the optional service property {@link #MAPPING_INSTANCE}
+   * will be used to determine which mappings this provider provides for. If not specify, then the
+   * provider
    */
   public static final String MAPPING_NAME = "mapping.name";
 
@@ -59,18 +62,19 @@ public interface ConfigMappingProvider extends Comparable<ConfigMappingProvider>
    * Gets a ranking priority for this provider (see class description for more details).
    *
    * <p><i>Note:</i> The provider's rank is not expected to change during the life of this provider
-   * unless the provider is first unbound from the {@link ConfigMappingService} and then rebound.
+   * unless the provider is rebound with the {@link ConfigMappingService} which will re-compute
+   * which config mappings are impacted by this change.
    *
    * @return this provider's ranking priority
    */
-  public int getRank();
+  public int getRanking();
 
   /**
    * Checks if this provider can provide mapped dictionaries for a given configuration mapping.
    *
    * <p><i>Note:</i> A provider is expected not to change which configuration mappings it provides
-   * for unless the provider is first unbound from the {@link ConfigMappingService} and then
-   * rebound. Rebinding a provider will re-compute which config mapping is impacted by this change.
+   * for unless the provider is rebound with the {@link ConfigMappingService} which will re-compute
+   * which config mappings are impacted by this change.
    *
    * @param mapping the config mapping to check if this provider can provide for
    * @return <code>true</code> if this provider can provide mapped dictionaries for the specified
@@ -82,8 +86,8 @@ public interface ConfigMappingProvider extends Comparable<ConfigMappingProvider>
    * Checks if this provider can provide mapped dictionaries for a given configuration mapping.
    *
    * <p><i>Note:</i> A provider is expected not to change which configuration mappings it provides
-   * for unless the provider is first unbound from the {@link ConfigMappingService} and then
-   * rebound. Rebinding a provider will re-compute which config mapping is impacted by this change.
+   * for unless the provider is rebound with the {@link ConfigMappingService} which will re-compute
+   * which config mappings are impacted by this change.
    *
    * @param id the id of the config mapping to check if this provider can provide for
    * @return <code>true</code> if this provider can provide mapped dictionaries for the specified

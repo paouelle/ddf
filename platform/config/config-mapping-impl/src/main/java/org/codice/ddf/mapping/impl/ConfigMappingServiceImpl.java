@@ -30,9 +30,6 @@ import org.codice.ddf.config.mapping.ConfigMappingEvent.Type;
 import org.codice.ddf.config.mapping.ConfigMappingListener;
 import org.codice.ddf.config.mapping.ConfigMappingProvider;
 import org.codice.ddf.config.mapping.ConfigMappingService;
-import org.osgi.framework.Bundle;
-import org.osgi.framework.BundleContext;
-import org.osgi.framework.FrameworkUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,24 +51,25 @@ public class ConfigMappingServiceImpl implements ConfigMappingService, ConfigLis
   }
 
   @Override
-  public boolean bind(ConfigMappingProvider provider) {
+  public void bind(ConfigMappingProvider provider) {
     LOGGER.debug("ConfigMappingServiceImpl::bind({})", provider);
-    if (providers.add(provider)) {
+    // first check if it already bound as in such condition, we need to first unbind it and then
+    // rebind it
+    if (unbind0(provider)) {
+      LOGGER.debug("rebound provider: {}", provider);
+    } else {
       LOGGER.debug("bound provider: {}", provider);
-      // find config mapping that needs to be updated
-      mappings.values().stream().filter(provider::canProvideFor).forEach(m -> bind(provider, m));
-      return true;
     }
-    return false;
+    providers.add(provider);
+    // find config mapping that needs to be updated
+    mappings.values().stream().filter(provider::canProvideFor).forEach(m -> bind(provider, m));
   }
 
   @Override
   public boolean unbind(ConfigMappingProvider provider) {
     LOGGER.debug("ConfigMappingServiceImpl::unbind({})", provider);
-    if (providers.remove(provider)) {
+    if (unbind0(provider)) {
       LOGGER.debug("unbound provider: {}", provider);
-      // find config mapping that needs to be updated
-      mappings.forEach((id, m) -> unbind(provider, m));
       return true;
     }
     return false;
@@ -79,16 +77,19 @@ public class ConfigMappingServiceImpl implements ConfigMappingService, ConfigLis
 
   @Override
   public Optional<ConfigMapping> getMapping(String name) {
+    LOGGER.debug("ConfigMappingServiceImpl::getMapping({})", name);
     return getMapping(ConfigMapping.Id.of(name));
   }
 
   @Override
   public Optional<ConfigMapping> getMapping(String name, String instance) {
+    LOGGER.debug("ConfigMappingServiceImpl::getMapping({}, name)", name, instance);
     return getMapping(ConfigMapping.Id.of(name, instance));
   }
 
   @Override
   public Optional<ConfigMapping> getMapping(ConfigMapping.Id id) {
+    LOGGER.debug("ConfigMappingServiceImpl::getMapping({})", id);
     return Optional.ofNullable(mappings.computeIfAbsent(id, this::newMapping))
         .filter(ConfigMappingImpl::isAvailable)
         .map(ConfigMapping.class::cast);
@@ -105,17 +106,18 @@ public class ConfigMappingServiceImpl implements ConfigMappingService, ConfigLis
         .forEach(this::notifyUpdated);
   }
 
-  protected BundleContext getBundleContext() {
-    final Bundle bundle = FrameworkUtil.getBundle(ConfigMappingServiceImpl.class);
-
-    if (bundle != null) {
-      return bundle.getBundleContext();
+  private boolean unbind0(ConfigMappingProvider provider) {
+    if (providers.remove(provider)) {
+      // find config mapping that needs to be updated
+      mappings.forEach((id, m) -> unbind(provider, m));
+      return true;
     }
-    throw new IllegalStateException("missing bundle for ConfigMappingServiceImpl");
+    return false;
   }
 
   @Nullable
   private ConfigMappingImpl newMapping(ConfigMapping.Id id) {
+    LOGGER.debug("ConfigMappingServiceImpl::newMapping({})", id);
     // search all registered providers to find those that supports the specified mapping
     final ConfigMappingImpl mapping =
         new ConfigMappingImpl(config, id, providers.stream().filter(p -> p.canProvideFor(id)));

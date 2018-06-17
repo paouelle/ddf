@@ -33,9 +33,13 @@ import org.codice.ddf.config.mapping.ConfigMappingProvider;
 // See https://github.com/boonproject/boon/issues/320 describes the problem
 // if you follow the suggested instructions then it stops at 1K and never goes back.
 public class GroovyConfigMappingReader {
+  public static final String MAPPING_EXTENSION = ".json";
+  public static final String MAPPING_PATTERN = "*.json";
+
   private static final ObjectMapper MAPPER =
       JsonFactory.create(
-          new JsonParserFactory().useAnnotations(), new JsonSerializerFactory().useAnnotations());
+          new JsonParserFactory().useAnnotations().acceptSingleValueAsArray(),
+          new JsonSerializerFactory().useAnnotations());
 
   /**
    * Parses the Json document provided by the given url.
@@ -95,6 +99,8 @@ public class GroovyConfigMappingReader {
    * @throws IOException if an I/O error occurred while parsing the document
    */
   public ConfigMappingProvider parse(String json) throws IOException {
-    return GroovyConfigMappingReader.MAPPER.fromJson(json, GroovyConfigMappingProvider.class);
+    synchronized (GroovyConfigMappingReader.MAPPER) {
+      return GroovyConfigMappingReader.MAPPER.fromJson(json, GroovyConfigMappingProvider.class);
+    }
   }
 }

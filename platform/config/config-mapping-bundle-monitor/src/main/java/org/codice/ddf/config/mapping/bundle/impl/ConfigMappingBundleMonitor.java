@@ -11,7 +11,7 @@
  * License is distributed along with this program and can be found at
  * <http://www.gnu.org/licenses/lgpl.html>.
  */
-package org.codice.ddf.mapping.bundle;
+package org.codice.ddf.config.mapping.bundle.impl;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -19,6 +19,7 @@ import java.net.URL;
 import java.util.Dictionary;
 import java.util.Enumeration;
 import java.util.stream.Stream;
+import org.apache.commons.io.FilenameUtils;
 import org.codice.ddf.config.mapping.ConfigMappingProvider;
 import org.codice.ddf.config.mapping.ConfigMappingService;
 import org.codice.ddf.config.mapping.groovy.GroovyConfigMappingReader;
@@ -38,9 +39,13 @@ public class ConfigMappingBundleMonitor implements SynchronousBundleListener, Cl
 
   private final GroovyConfigMappingReader reader = new GroovyConfigMappingReader();
 
+  public ConfigMappingBundleMonitor() {
+    LOGGER.debug("ConfigMappingBundleMonitor()");
+  }
+
   @SuppressWarnings("unused" /* called by blueprint */)
   public void init() {
-    LOGGER.debug("ConfigMappingServiceImpl::init()");
+    LOGGER.debug("ConfigMappingBundleMonitor::init()");
     final BundleContext context = getBundleContext();
 
     // start by registering a bundle listener
@@ -53,7 +58,7 @@ public class ConfigMappingBundleMonitor implements SynchronousBundleListener, Cl
 
   @Override
   public void close() {
-    LOGGER.debug("ConfigMappingServiceImpl::close()");
+    LOGGER.debug("ConfigMappingBundleMonitor::close()");
     final BundleContext context = getBundleContext();
 
     context.removeBundleListener(this);
@@ -76,7 +81,7 @@ public class ConfigMappingBundleMonitor implements SynchronousBundleListener, Cl
     final int type = event.getType();
 
     LOGGER.debug(
-        "ConfigMappingServiceImpl::bundleChanged() - type = [{}], bundle = [{}], state = [{}]",
+        "ConfigMappingBundleMonitor::bundleChanged() - type = [{}], bundle = [{}], state = [{}]",
         type,
         location,
         state);
@@ -88,10 +93,13 @@ public class ConfigMappingBundleMonitor implements SynchronousBundleListener, Cl
   private void loadAndRegisterMappings(Bundle bundle) {
     final String location = bundle.getLocation();
 
-    LOGGER.debug("ConfigMappingServiceImpl::loadAndRegisterMappings({})", location);
+    LOGGER.debug("ConfigMappingBundleMonitor::loadAndRegisterMappings({})", location);
     // check if we can find mappings resources for this bundle
     final Enumeration<URL> urls =
-        bundle.findEntries(ConfigMappingService.MAPPINGS_DOCUMENTS_LOCATION, "*.xml", false);
+        bundle.findEntries(
+            ConfigMappingService.MAPPINGS_DOCUMENTS_LOCATION,
+            GroovyConfigMappingReader.MAPPING_PATTERN,
+            false);
 
     if ((urls == null) || !urls.hasMoreElements()) {
       LOGGER.debug("no mapping documents found in bundle: {}", bundle.getLocation());
@@ -110,9 +118,11 @@ public class ConfigMappingBundleMonitor implements SynchronousBundleListener, Cl
         provider = reader.parse(url);
         props.put(
             Constants.SERVICE_DESCRIPTION,
-            String.format("[%s] Groovy Config Mapping Provider", bundleName));
+            String.format(
+                "%s :: Config Mapping Provider || %s",
+                bundleName, FilenameUtils.getName(url.getPath())));
         props.put(Constants.SERVICE_VENDOR, "Codice Foundation");
-        props.put(Constants.SERVICE_RANKING, provider.getRank());
+        props.put(Constants.SERVICE_RANKING, provider.getRanking());
       } catch (IOException e) {
         LOGGER.error(
             "failed to load config mapping resource '{}' from bundle '{}': {}",
