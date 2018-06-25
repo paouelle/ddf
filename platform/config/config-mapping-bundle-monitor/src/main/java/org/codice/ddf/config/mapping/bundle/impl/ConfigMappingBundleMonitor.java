@@ -46,14 +46,18 @@ public class ConfigMappingBundleMonitor implements SynchronousBundleListener, Cl
   @SuppressWarnings("unused" /* called by blueprint */)
   public void init() {
     LOGGER.debug("ConfigMappingBundleMonitor::init()");
-    final BundleContext context = getBundleContext();
+    try {
+      final BundleContext context = getBundleContext();
 
-    // start by registering a bundle listener
-    context.addBundleListener(this);
-    // then process all existing bundles
-    Stream.of(context.getBundles())
-        .filter(ConfigMappingBundleMonitor::isActiveOrStarting)
-        .forEach(this::loadAndRegisterMappings);
+      // start by registering a bundle listener
+      context.addBundleListener(this);
+      // then process all existing bundles
+      Stream.of(context.getBundles())
+          .filter(ConfigMappingBundleMonitor::isActiveOrStarting)
+          .forEach(this::loadAndRegisterMappings);
+    } finally {
+      LOGGER.debug("ConfigMappingBundleMonitor::init() - done");
+    }
   }
 
   @Override
@@ -119,7 +123,7 @@ public class ConfigMappingBundleMonitor implements SynchronousBundleListener, Cl
         props.put(
             Constants.SERVICE_DESCRIPTION,
             String.format(
-                "%s :: Config Mapping Provider || %s",
+                "%s :: Config Mapping Provider :: %s",
                 bundleName, FilenameUtils.getName(url.getPath())));
         props.put(Constants.SERVICE_VENDOR, "Codice Foundation");
         props.put(Constants.SERVICE_RANKING, provider.getRanking());

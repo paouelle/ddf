@@ -26,12 +26,6 @@
                interface="org.codice.ddf.config.ConfigService"
                availability="mandatory"/>
 
-    <!-- bean id="ConfigSource.class"
-          class="java.lang.Class"
-          factory-method="forName">
-        <argument value="org.codice.ddf.config.ConfigSource"/>
-    </bean -->
-
     <bean id="configAgent"
           class="org.codice.ddf.config.agent.osgi.ConfigAdminAgent"
           init-method="init"
@@ -45,7 +39,8 @@
             <map>
                 <entry value="DDF_Custom_Mime_Type_Resolver">
                     <key>
-                        <value type="java.lang.Class">org.codice.ddf.config.MimeTypeConfig</value>
+                        <value type="java.lang.Class">org.codice.ddf.config.model.MimeTypeConfig
+                        </value>
                     </key>
                 </entry>
             </map>
@@ -55,6 +50,7 @@
     <service ref="configAgent">
         <interfaces>
             <value>org.codice.ddf.config.mapping.ConfigMappingListener</value>
+            <value>org.codice.ddf.config.ConfigListener</value>
             <value>org.osgi.service.cm.SynchronousConfigurationListener</value>
             <!-- TODO: might not be required since service listeners are registered directly with the bundle context -->
             <value>org.osgi.framework.ServiceListener</value>

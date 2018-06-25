@@ -22,7 +22,7 @@
                     availability="optional"/>
 
     <bean id="mapper"
-          class="org.codice.ddf.mapping.impl.OSGIConfigMappingService"
+          class="org.codice.ddf.config.mapping.impl.OSGIConfigMappingService"
           init-method="init"
           destroy-method="close">
         <argument ref="config"/>

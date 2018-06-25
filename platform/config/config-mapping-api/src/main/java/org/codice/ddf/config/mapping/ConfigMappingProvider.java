@@ -15,13 +15,10 @@ package org.codice.ddf.config.mapping;
 
 import java.util.Map;
 import org.codice.ddf.config.ConfigService;
-import org.codice.ddf.config.mapping.ConfigMapping.Id;
 
 /**
  * Provides access to mapped configuration properties for either a configuration mapping or for a
- * given instance of a configuration mapping. This interface can be registered as a service with
- * {@link #MAPPING_NAME} and optionally {@link #MAPPING_INSTANCE} service properties. Any names
- * and/or instances mentioned must be valid arguments to the {@link #provide} method.
+ * given instance of a configuration mapping.
  *
  * <p>The {@linkConfigMappingService} will apply priority on a per property-basis which would allow
  * additional registered providers to override some but not all properties. Comparison of providers
@@ -30,34 +27,8 @@ import org.codice.ddf.config.mapping.ConfigMapping.Id;
  * very likely to have its mapped properties overridden. When a tie in ranking exist, whichever
  * provider was first bound to the {@link ConfigMappingService} directly will be considered to have
  * a higher priority.
- *
- * <p>For providers registered as OSGI services, ranking and which configuration mappings as
- * returned by the {@link #getRanking()}, {@link #canProvideFor(ConfigMapping)}, and {@link
- * #canProvideFor(Id)} methods are ignored in favor of using the service ranking and {@link
- * #MAPPING_NAME}, and {@link #MAPPING_INSTANCE} service properties registered with the service.
- * When a ranking tie in exist, whichever service that was first registered with the service
- * registry will be considered to have a higher priority.
  */
 public interface ConfigMappingProvider extends Comparable<ConfigMappingProvider> {
-  /**
-   * Optional service property to signal that this service is able to provide mapped dictionaries
-   * for the given mapping name (e.g. managed service factory PID). The type of this service
-   * property is <code>String+</code>. If specified when registered as a service, the information
-   * along with the information provided by the optional service property {@link #MAPPING_INSTANCE}
-   * will be used to determine which mappings this provider provides for. If not specify, then the
-   * provider
-   */
-  public static final String MAPPING_NAME = "mapping.name";
-
-  /**
-   * Optional service property to signal that this service is able to provide mapped dictionaries
-   * for the given instance of the corresponding configuration mapping name (e.g. instance of a
-   * given managed service factory). If not specified, this service can provide mapped dictionaries
-   * for all instances of the corresponding configuration mapping name. The type of this service
-   * property is <code>String+</code>.
-   */
-  public static final String MAPPING_INSTANCE = "mapping.instance";
-
   /**
    * Gets a ranking priority for this provider (see class description for more details).
    *
@@ -68,6 +39,19 @@ public interface ConfigMappingProvider extends Comparable<ConfigMappingProvider>
    * @return this provider's ranking priority
    */
   public int getRanking();
+
+  /**
+   * Indicates whether this provider is only capable of providing partial properties or if it can
+   * provide all properties.
+   *
+   * <p>At least one provider capable of providing all properties and not just partial one is
+   * required to be bound to the mapping service before a corresponding mapping can be made
+   * available.
+   *
+   * @return <code>true</code> if this provider is only capable of providing parts of all the
+   *     properties for this mapping; <code>false</code> if it is able to provide all of them
+   */
+  public boolean isPartial();
 
   /**
    * Checks if this provider can provide mapped dictionaries for a given configuration mapping.
