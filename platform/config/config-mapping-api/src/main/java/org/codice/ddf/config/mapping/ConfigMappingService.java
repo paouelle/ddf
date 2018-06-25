@@ -31,6 +31,16 @@ public interface ConfigMappingService {
   public void bind(ConfigMappingProvider provider);
 
   /**
+   * Rebinds an existing provider with a new one to this mapping service.
+   *
+   * @param old the old provider to be unbound
+   * @param provider the new provider to be bound
+   * @return <code>true</code> if the old provider was unbound and the new one bound; <code>false
+   *     </code> if the old provider was not bound (the new one will not have been bound)
+   */
+  public boolean rebind(ConfigMappingProvider old, ConfigMappingProvider provider);
+
+  /**
    * Unbinds a provider from this mapping service.
    *
    * @param provider the provider to be unbound

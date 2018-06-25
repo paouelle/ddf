@@ -61,12 +61,16 @@ public class ConfigMappingFileMonitor implements Closeable {
   /** Initializes mapping providers based on all files found in the defined paths. */
   public void init() {
     LOGGER.debug("ConfigMappingFileMonitor::init()");
-    synchronized (lock) {
-      paths
-          .stream()
-          .map(Path::toFile)
-          .flatMap(ConfigMappingFileMonitor::listFiles)
-          .forEach(this::install);
+    try {
+      synchronized (lock) {
+        paths
+            .stream()
+            .map(Path::toFile)
+            .flatMap(ConfigMappingFileMonitor::listFiles)
+            .forEach(this::install);
+      }
+    } finally {
+      LOGGER.debug("ConfigMappingFileMonitor::init() - done");
     }
   }
 
@@ -110,14 +114,13 @@ public class ConfigMappingFileMonitor implements Closeable {
     synchronized (lock) {
       final ConfigMappingProvider old = providers.put(file, provider);
 
-      // we need to first unbind the existing provider if any an the rebind it
       if (old != null) {
         LOGGER.debug("rebinding [{}] config mapping provider [{}]: {}", file, old, provider);
-        mapper.unbind(old);
+        mapper.rebind(old, provider);
       } else {
         LOGGER.debug("binding [{}] config mapping provider: {}", file, provider);
+        mapper.bind(provider);
       }
-      mapper.bind(provider);
     }
   }
 

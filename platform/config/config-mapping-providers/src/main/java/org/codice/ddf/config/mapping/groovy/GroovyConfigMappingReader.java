@@ -20,6 +20,7 @@ import java.io.InputStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import org.apache.commons.io.IOUtils;
+import org.boon.json.JsonException;
 import org.boon.json.JsonFactory;
 import org.boon.json.JsonParserFactory;
 import org.boon.json.JsonSerializerFactory;
@@ -99,8 +100,12 @@ public class GroovyConfigMappingReader {
    * @throws IOException if an I/O error occurred while parsing the document
    */
   public ConfigMappingProvider parse(String json) throws IOException {
-    synchronized (GroovyConfigMappingReader.MAPPER) {
-      return GroovyConfigMappingReader.MAPPER.fromJson(json, GroovyConfigMappingProvider.class);
+    try {
+      synchronized (GroovyConfigMappingReader.MAPPER) {
+        return GroovyConfigMappingReader.MAPPER.fromJson(json, GroovyConfigMappingProvider.class);
+      }
+    } catch (JsonException e) {
+      throw new IOException(e);
     }
   }
 }

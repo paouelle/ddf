@@ -32,6 +32,7 @@ import org.codice.ddf.config.ConfigService;
 import org.codice.ddf.config.mapping.ConfigMapping;
 import org.codice.ddf.config.mapping.ConfigMappingException;
 import org.codice.ddf.config.mapping.ConfigMappingProvider;
+import org.codice.ddf.config.model.MimeTypeConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +53,13 @@ class GroovyConfigMappingProvider implements ConfigMappingProvider {
 
   /** Optional ranking for this provider. Defaults to 0. */
   private final int ranking;
+
+  /**
+   * Optional flag indicating whether this provider is only capable of providing partial properties
+   * or if it can provide all properties. By default a provider only provides part of the
+   * properties.
+   */
+  private final boolean partial;
 
   /** Optional set of imports to add to Groovy before compiling scripts. */
   private final Set<String> imports;
@@ -75,7 +83,7 @@ class GroovyConfigMappingProvider implements ConfigMappingProvider {
   /**
    * Constructs a default groovy config mapping provider.
    *
-   * <p><i>Note:</i> This constructor is primarly defined for Json deserialization such that we end
+   * <p><i>Note:</i> This constructor is primarily defined for Json deserialization such that we end
    * up initializing the lists with empty collections. This will be helpful, for example, in case
    * where no instance ids were serialized in which case Boon would not be setting this attribute.
    */
@@ -83,6 +91,7 @@ class GroovyConfigMappingProvider implements ConfigMappingProvider {
     this.names = new HashSet<>();
     this.instances = new HashSet<>();
     this.ranking = 0;
+    this.partial = true;
     this.imports = new HashSet<>();
     this.setup = null;
     this.rules = new HashMap<>();
@@ -91,6 +100,11 @@ class GroovyConfigMappingProvider implements ConfigMappingProvider {
   @Override
   public int getRanking() {
     return ranking;
+  }
+
+  @Override
+  public boolean isPartial() {
+    return partial;
   }
 
   @Override
@@ -171,6 +185,8 @@ class GroovyConfigMappingProvider implements ConfigMappingProvider {
         + instances
         + ", ranking="
         + ranking
+        + ", partial="
+        + partial
         + ", rules="
         + rules
         + "]";
@@ -183,6 +199,7 @@ class GroovyConfigMappingProvider implements ConfigMappingProvider {
       final ImportCustomizer importsCustomizer = new ImportCustomizer();
 
       importsCustomizer.addStarImports(Config.class.getPackage().getName());
+      importsCustomizer.addStarImports(MimeTypeConfig.class.getPackage().getName());
       importsCustomizer.addImports(imports.toArray(new String[imports.size()]));
       compilerCfg.addCompilationCustomizers(importsCustomizer);
       this.setupScript = precompile(setup, compilerCfg);

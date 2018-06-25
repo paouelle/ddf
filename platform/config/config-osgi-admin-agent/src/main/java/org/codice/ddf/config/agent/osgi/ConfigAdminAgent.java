@@ -19,20 +19,19 @@ import java.lang.reflect.Array;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Dictionary;
 import java.util.Enumeration;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.Spliterator;
 import java.util.Spliterators;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import javax.annotation.Nullable;
@@ -48,6 +47,7 @@ import org.codice.ddf.config.mapping.ConfigMappingException;
 import org.codice.ddf.config.mapping.ConfigMappingListener;
 import org.codice.ddf.config.mapping.ConfigMappingService;
 import org.codice.ddf.configuration.DictionaryMap;
+import org.codice.ddf.platform.util.StandardThreadFactoryBuilder;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
@@ -73,6 +73,10 @@ public class ConfigAdminAgent
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ConfigAdminAgent.class);
 
+  private static final int THREAD_POOL_DEFAULT_SIZE = 1;
+
+  private static final ExecutorService EXECUTOR = ConfigAdminAgent.createExecutor();
+
   private final ConfigurationAdmin configAdmin;
 
   private final ConfigMappingService mapper;
@@ -80,10 +84,11 @@ public class ConfigAdminAgent
   private final ConfigService config;
 
   // keyed by config group type with the corresponding lists of factory pids to create objects for
-  private final Map<Class<? extends ConfigGroup>, String> factories =
-      Collections.synchronizedMap(new HashMap<>());
+  private final Map<Class<? extends ConfigGroup>, String> factories = new HashMap<>();
 
   private final Map<String, Dictionary<String, Object>> cache = new ConcurrentHashMap<>();
+
+  private final Object lock = new Object();
 
   public ConfigAdminAgent(
       ConfigurationAdmin configAdmin, ConfigMappingService mapper, ConfigService config) {
@@ -95,31 +100,50 @@ public class ConfigAdminAgent
   @SuppressWarnings("unused" /* called by blueprint */)
   public void init() {
     LOGGER.debug("ConfigAdminAgent:init()");
-    final BundleContext context = getBundleContext();
-
-    // start by registering a service listener
-    context.addServiceListener(this);
-    final Set<Optional<ConfigMapping>> processed = new HashSet<>();
-
     try {
-      // then process all existing config objects
-      configurations().map(this::updateConfiguration).forEach(processed::add);
+      final BundleContext context = getBundleContext();
+
+      // start by registering a service listener
+      context.addServiceListener(this);
+      // then process all existing config objects but do that on a separate thread to not delay
+      // the initialization
+      ConfigAdminAgent.EXECUTOR.execute(this::initConfigurations);
+      // finally process all registered services for the PIDs they identify on a separate thread
+      // also
+      ConfigAdminAgent.EXECUTOR.execute(this::initServices);
+    } finally {
+      LOGGER.debug("ConfigAdminAgent:init() - done");
+    }
+  }
+
+  private void initConfigurations() {
+    LOGGER.debug("ConfigAdminAgent:initConfigurations()");
+    try {
+      configurations().forEach(this::updateConfiguration);
     } catch (IOException | ConfigMappingException e) { // ignore
       LOGGER.error("failed to initialize existing config objects: {}", e.getMessage());
       LOGGER.debug("initialization failure: {}", e, e);
+    } finally {
+      LOGGER.debug("ConfigAdminAgent:initConfigurations() - done");
     }
+  }
+
+  private void initServices() {
+    LOGGER.debug("ConfigAdminAgent:initServices()");
+    final BundleContext context = getBundleContext();
+
     try {
-      // finally process all registered services for the PIDs they identify
       ConfigAdminAgent.serviceReferences(context)
           .flatMap(ConfigAdminAgent::servicePids)
           .map(mapper::getMapping)
-          .filter(m -> !processed.contains(m)) // filter out those we already processed above
           .filter(Optional::isPresent)
           .map(Optional::get)
           .forEach(this::updateConfigObjectFor);
     } catch (ConfigMappingException e) { // ignore
       LOGGER.error("failed to initialize registered services: {}", e.getMessage());
       LOGGER.debug("initialization failure: {}", e, e);
+    } finally {
+      LOGGER.debug("ConfigAdminAgent:initServices() - done");
     }
   }
 
@@ -133,84 +157,108 @@ public class ConfigAdminAgent
 
   @SuppressWarnings("unused" /* called from blueprint */)
   public void setFactories(Map<Class<? extends ConfigGroup>, String> factories) {
-    // TODO: determine what mappings no longer exist so we can remove the corresponding config objs
-    // process all configured config instances we have to monitor
-    synchronized (this.factories) {
+    synchronized (lock) {
+      LOGGER.debug("ConfigAdminAgent:setFactories({})", factories);
+
+      // TODO: determine what mappings no longer exist so we can remove the corresponding config
+      // objs
+      // process all configured config instances we have to monitor
       this.factories.clear();
       this.factories.putAll(factories);
+      factories.forEach(this::findConfigMappingsFor);
     }
-    factories.forEach(this::findConfigMappingsFor);
   }
 
   @Override
   public void serviceChanged(ServiceEvent event) {
-    final ServiceReference<?> ref = event.getServiceReference();
-    final int type = event.getType();
-
-    LOGGER.debug("ConfigAdminAgent::serviceChanged() - type = [{}], service = [{}]", type, ref);
-    if ((type == ServiceEvent.REGISTERED) || (type == ServiceEvent.MODIFIED)) {
-      ConfigAdminAgent.servicePids(ref)
-          .map(mapper::getMapping)
-          .filter(Optional::isPresent)
-          .map(Optional::get)
-          .forEach(this::updateConfigObjectFor);
+    synchronized (lock) {
+      final ServiceReference<?> ref = event.getServiceReference();
+      final int type = event.getType();
+      // DDF_Custom_Mime_Type_Resolver.b61903e6-59cb-4394-8060-03e803c56652
+      LOGGER.debug("ConfigAdminAgent::serviceChanged() - type = [{}], service = [{}]", type, ref);
+      if ((type == ServiceEvent.REGISTERED) || (type == ServiceEvent.MODIFIED)) {
+        // filter the pids that already exist in config admin as those would have alreay been
+        // processed
+        ConfigAdminAgent.servicePids(ref)
+            .filter(this::configurationDoesNotExist)
+            .map(mapper::getMapping)
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .forEach(this::updateConfigObjectFor);
+        LOGGER.debug("done processing all PIDs for service: {}", ref);
+      } else {
+        LOGGER.debug("ignoring event [{}] for service [{}]", type, ref);
+      }
     }
   }
 
   @Override
   public void configurationEvent(ConfigurationEvent event) {
-    LOGGER.debug("ConfigAdminAgent:configurationEvent({})", event);
-    final String pid = event.getPid();
-
-    try {
-      switch (event.getType()) {
-        case ConfigurationEvent.CM_UPDATED:
-        case ConfigurationEvent.CM_LOCATION_CHANGED:
-          final ConfigurationAdmin cfgAdmin = getService(event.getReference());
-
-          getConfiguration(cfgAdmin, event.getPid()).ifPresent(this::updateConfiguration);
-          break;
-        case ConfigurationEvent.CM_DELETED:
-          cache.remove(pid);
-          return;
-        default:
-          return;
+    synchronized (lock) {
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug(
+            "ConfigAdminAgent:configurationEvent(type={}, pid={}, factoryPid={})",
+            event.getType(),
+            event.getPid(),
+            event.getFactoryPid());
       }
-    } catch (InvalidSyntaxException | IOException | ConfigMappingException e) { // ignore
-      LOGGER.warn("failed to process event for config object '{}': {}", pid, e.getMessage());
-      LOGGER.debug("config event failure: {}", e, e);
+      final String pid = event.getPid();
+
+      try {
+        switch (event.getType()) {
+          case ConfigurationEvent.CM_UPDATED:
+          case ConfigurationEvent.CM_LOCATION_CHANGED:
+            final ConfigurationAdmin cfgAdmin = getService(event.getReference());
+
+            getConfiguration(cfgAdmin, event.getPid()).ifPresent(this::updateConfiguration);
+            break;
+          case ConfigurationEvent.CM_DELETED:
+            cache.remove(pid);
+            return;
+          default:
+            return;
+        }
+      } catch (InvalidSyntaxException | IOException | ConfigMappingException e) { // ignore
+        LOGGER.warn("failed to process event for config object '{}': {}", pid, e.getMessage());
+        LOGGER.debug("config event failure: {}", e, e);
+      }
     }
   }
 
   @Override
   public void mappingChanged(ConfigMappingEvent event) {
-    LOGGER.debug("ConfigAdminAgent:mappingChanged({})", event);
-    if (event.getType() == Type.REMOVED) {
-      // just leave it alone - TODO: should we delete the corresponding config object???
-      return;
+    synchronized (lock) {
+      LOGGER.debug("ConfigAdminAgent:mappingChanged({})", event);
+      if (event.getType() == Type.REMOVED) {
+        // just leave it alone - TODO: should we delete the corresponding config object???
+        return;
+      }
+      updateConfigObjectFor(event.getMapping());
     }
-    updateConfigObjectFor(event.getMapping());
   }
 
   @Override
   public void configChanged(ConfigEvent event) {
-    LOGGER.debug("ConfigAdminAgent:configChanged({})", event);
-    // only check updates for config instances that maps to factory pids we are monitoring
-    // start with config instances that were removed
-    event
-        .removedConfigs()
-        .filter(ConfigGroup.class::isInstance)
-        .map(ConfigGroup.class::cast)
-        .forEach(this::removeConfigObjectFor);
-    // handle new and updated ones the same way to make sure we have corresponding cfg objects if
-    // for whatever reasons we had missed them
-    // for updates of existing mappings, these will be handled by the mapper and we will get
-    // notified if there is any changes, what we care about here is simply to detect those for which
-    // we do not have a corresponding config object
-    Stream.concat(event.addedConfigs(), event.updatedConfigs())
-        .filter(ConfigGroup.class::isInstance)
-        .map(ConfigGroup.class::cast)
-        .forEach(this::findConfigMappingFor);
+    synchronized (lock) {
+      LOGGER.debug("ConfigAdminAgent:configChanged({})", event);
+      // only check updates for config instances that maps to factory pids we are monitoring
+      // start with config instances that were removed
+      event
+          .removedConfigs()
+          .filter(ConfigGroup.class::isInstance)
+          .map(ConfigGroup.class::cast)
+          .forEach(this::removeConfigObjectFor);
+      // handle new and updated ones the same way to make sure we have corresponding cfg objects if
+      // for whatever reasons we had missed them
+      // for updates of existing mappings, these will be handled by the mapper and we will get
+      // notified if there is any changes, what we care about here is simply to detect those for
+      // which
+      // we do not have a corresponding config object
+      Stream.concat(event.addedConfigs(), event.updatedConfigs())
+          .filter(ConfigGroup.class::isInstance)
+          .map(ConfigGroup.class::cast)
+          .forEach(this::findConfigMappingFor);
+    }
   }
 
   BundleContext getBundleContext() {
@@ -268,7 +316,7 @@ public class ConfigAdminAgent
       final Configuration cfg = getConfiguration(factoryPid, id);
 
       if (cfg != null) {
-        cfg.delete(); // cache will be cleanup when we get the even back from cfg admin
+        cfg.delete(); // cache will be cleanup when we get the event back from cfg admin
         LOGGER.debug("deleted config object '{}-{}' as {}", factoryPid, id, cfg.getPid());
       }
     } catch (InvalidSyntaxException | IOException e) {
@@ -282,40 +330,48 @@ public class ConfigAdminAgent
   }
 
   private void updateConfigObjectFor(ConfigMapping mapping) {
-    LOGGER.debug("ConfigAdminAgent:updateConfigObjectFor({})", mapping);
-    try {
-      final String instance = mapping.getId().getInstance().orElse(null);
-      final String pid = mapping.getId().getName();
-      final Configuration cfg;
+    synchronized (lock) {
+      LOGGER.debug("ConfigAdminAgent:updateConfigObjectFor({})", mapping);
+      try {
+        final String instance = mapping.getId().getInstance().orElse(null);
+        final String pid = mapping.getId().getName();
+        final Configuration cfg;
 
-      if (instance != null) { // a managed service factory
-        cfg = getOrCreateConfiguration(pid, instance);
-      } else {
-        // get or create the first version
-        // location as null to make sure it is bound to the first bundles that registers the
-        // managed service
-        cfg = configAdmin.getConfiguration(pid, null);
-        LOGGER.debug("created/updated config object '{}'", pid);
+        if (instance != null) { // a managed service factory
+          cfg = getOrCreateConfiguration(pid, instance);
+        } else {
+          // get or create the first version
+          // location as null to make sure it is bound to the first bundles that registers the
+          // managed service
+          cfg = configAdmin.getConfiguration(pid, null);
+          LOGGER.debug("created/updated config object for pid [{}]", pid);
+        }
+        updateConfigurationWithMapping(cfg, ConfigAdminAgent.getProperties(cfg), mapping);
+      } catch (InvalidSyntaxException | ConfigMappingException | IOException e) {
+        LOGGER.warn(
+            "failed to update config object for config mapping '{}': {}",
+            mapping.getId(),
+            e.getMessage());
+        LOGGER.debug("config object update failure: {}", e, e);
       }
-      updateConfigurationWithMapping(cfg, mapping);
-    } catch (InvalidSyntaxException | ConfigMappingException | IOException e) {
-      LOGGER.warn(
-          "failed to update config object for config mapping '{}': {}",
-          mapping.getId(),
-          e.getMessage());
-      LOGGER.debug("config object update failure: {}", e, e);
     }
   }
 
-  private Optional<ConfigMapping> updateConfiguration(Configuration cfg) {
+  private void updateConfiguration(Configuration cfg) {
     LOGGER.debug("ConfigAdminAgent:updateConfiguration({})", cfg);
+    final String pid = cfg.getPid();
+    final Dictionary<String, Object> cachedProperties = cache.get(pid);
+    final Dictionary<String, Object> properties = ConfigAdminAgent.getProperties(cfg);
+
+    if ((cachedProperties != null) && ConfigAdminAgent.equals(properties, cachedProperties)) {
+      // nothing to update - properties are still the same
+      return;
+    }
     final String factoryPid = cfg.getFactoryPid();
     final Optional<ConfigMapping> mapping;
-    final String pid = cfg.getPid();
 
     if (factoryPid != null) { // see if we know its instance id
-      final String instance =
-          Objects.toString(cfg.getProperties().get(ConfigAdminAgent.INSTANCE_KEY), null);
+      final String instance = Objects.toString(properties.get(ConfigAdminAgent.INSTANCE_KEY), null);
 
       if (instance == null) {
         // we cannot handle that one specifically, check if we have mappings for the factory and
@@ -330,7 +386,7 @@ public class ConfigAdminAgent
           LOGGER.debug(
               "unknown managed service factory; missing instance from config object [{}]", pid);
         }
-        return Optional.empty();
+        return;
       } else {
         LOGGER.debug(
             "found instance id from config object [{}]; handling it as [{}-{}]",
@@ -342,16 +398,16 @@ public class ConfigAdminAgent
     } else {
       mapping = mapper.getMapping(pid);
     }
-    mapping.ifPresent(m -> updateConfigurationWithMapping(cfg, m));
-    return mapping;
+    mapping.ifPresent(m -> updateConfigurationWithMapping(cfg, properties, m));
   }
 
-  private void updateConfigurationWithMapping(Configuration cfg, ConfigMapping mapping) {
-    LOGGER.debug("ConfigAdminAgent:updateConfigurationWithMapping({}, {})", cfg, mapping);
+  private void updateConfigurationWithMapping(
+      Configuration cfg, Dictionary<String, Object> properties, ConfigMapping mapping) {
+    LOGGER.debug(
+        "ConfigAdminAgent:updateConfigurationWithMapping({}, {}, {})", cfg, properties, mapping);
     final String pid = cfg.getPid();
 
     try {
-      final Dictionary<String, Object> properties = ConfigAdminAgent.getProperties(cfg);
       final String instance = mapping.getId().getInstance().orElse(null);
 
       // compute the new mapping values
@@ -366,41 +422,43 @@ public class ConfigAdminAgent
   private void updateConfigurationProperties(
       Configuration cfg, @Nullable String instance, @Nullable Dictionary<String, Object> properties)
       throws IOException {
-    final String pid = cfg.getPid();
-    final Dictionary<String, Object> cachedProperties = cache.get(pid);
+    synchronized (lock) {
+      final String pid = cfg.getPid();
+      final Dictionary<String, Object> cachedProperties = cache.get(pid);
 
-    if (properties == null) { // initialize the properties
-      properties = new DictionaryMap<>();
-    }
-    // keep the instance up to date
-    if (instance != null) {
-      properties.put(ConfigAdminAgent.INSTANCE_KEY, instance);
-    } else {
-      properties.remove(ConfigAdminAgent.INSTANCE_KEY);
-    }
-    // only update configAdmin if the dictionary content has changed
-    if ((cachedProperties == null) || !ConfigAdminAgent.equals(cachedProperties, properties)) {
-      LOGGER.debug("updating config object [{}] with: {}", pid, properties);
-      Dictionary<String, Object> old = null;
+      if (properties == null) { // initialize the properties
+        properties = new DictionaryMap<>();
+      }
+      // keep the instance up to date
+      if (instance != null) {
+        properties.put(ConfigAdminAgent.INSTANCE_KEY, instance);
+      } else {
+        properties.remove(ConfigAdminAgent.INSTANCE_KEY);
+      }
+      // only update configAdmin if the dictionary content has changed
+      if ((cachedProperties == null) || !ConfigAdminAgent.equals(cachedProperties, properties)) {
+        LOGGER.debug("updating config object [{}] with: {}", pid, properties);
+        Dictionary<String, Object> old = null;
 
-      try {
-        old = cache.put(pid, properties);
-        cfg.update(properties);
-      } catch (IOException e) {
-        if (old == null) {
-          cache.remove(pid);
-        } else {
-          cache.put(pid, old);
+        try {
+          old = cache.put(pid, properties);
+          cfg.update(properties);
+        } catch (IOException e) {
+          if (old == null) {
+            cache.remove(pid);
+          } else {
+            cache.put(pid, old);
+          }
+          throw e;
         }
-        throw e;
       }
     }
   }
 
   private Optional<Configuration> getConfiguration(ConfigurationAdmin configAdmin, String pid)
       throws InvalidSyntaxException, IOException {
-    // we use listConfigurations to not bind the config object to our bundle if it was bound yet
-    // as we want to make sure that it will be bounded to its corresponding service
+    // we use listConfigurations() to not bind the config object to our bundle if it was not bound
+    // yet as we want to make sure that it will be bound to its corresponding service
     final String filter = String.format("(%s=%s)", org.osgi.framework.Constants.SERVICE_PID, pid);
     final Configuration[] configs = configAdmin.listConfigurations(filter);
 
@@ -437,8 +495,21 @@ public class ConfigAdminAgent
     // location as null to make sure it is bound to the first bundles that registers the
     // managed service factory
     cfg = configAdmin.createFactoryConfiguration(factoryPid, null);
-    LOGGER.debug("created new config object '{}-{}' as {}", factoryPid, instance, cfg.getPid());
+    LOGGER.debug(
+        "created new config object [{}-{}] with pid [{}]", factoryPid, instance, cfg.getPid());
     return cfg;
+  }
+
+  private boolean configurationDoesNotExist(String pid) {
+    try {
+      final boolean exist = getConfiguration(configAdmin, pid).isPresent();
+
+      LOGGER.debug("ConfigAdminAgent:configurationDoesNotExist({}) - {}", pid, !exist);
+      return !exist;
+    } catch (InvalidSyntaxException | IOException e) { // ignore and assume it doesn't exist
+      LOGGER.debug("ConfigAdminAgent:configurationDoesNotExist({}) - true: {}", pid, e, e);
+      return true;
+    }
   }
 
   private Stream<Configuration> configurations() throws IOException {
@@ -509,8 +580,10 @@ public class ConfigAdminAgent
     final Object prop = ref.getProperty(Constants.SERVICE_PID);
 
     if (prop instanceof String) {
+      LOGGER.debug("found service [{}] PID: {}", ref, prop);
       return Stream.of((String) prop);
     } else if (prop instanceof Collection) {
+      LOGGER.debug("found service [{}] PIDs: {}", ref, prop);
       return ((Collection<?>) prop).stream().map(String::valueOf);
     } else if ((prop != null) && prop.getClass().isArray()) {
       final int length = Array.getLength(prop);
@@ -530,7 +603,10 @@ public class ConfigAdminAgent
                   if (!hasNext()) {
                     throw new NoSuchElementException();
                   }
-                  return String.valueOf(Array.get(prop, i++));
+                  final String s = String.valueOf(Array.get(prop, i++));
+
+                  LOGGER.debug("found service [{}] PID: {}", ref, s);
+                  return s;
                 }
 
                 @Override
@@ -543,5 +619,11 @@ public class ConfigAdminAgent
           false);
     } // else - unsupported type or null so return empty stream
     return Stream.empty();
+  }
+
+  private static ExecutorService createExecutor() throws NumberFormatException {
+    return Executors.newFixedThreadPool(
+        ConfigAdminAgent.THREAD_POOL_DEFAULT_SIZE,
+        StandardThreadFactoryBuilder.newThreadFactory("ConfigAdminAgent"));
   }
 }

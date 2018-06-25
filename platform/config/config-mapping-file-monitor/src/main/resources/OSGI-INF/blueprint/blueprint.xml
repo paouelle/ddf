@@ -12,7 +12,10 @@
  *
  **/
  -->
-<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0">
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+           xmlns:ext="http://aries.apache.org/blueprint/xmlns/blueprint-ext/v1.2.0">
+    <ext:property-placeholder placeholder-prefix="$[" placeholder-suffix="]"/>
+
     <reference id="mapper"
                interface="org.codice.ddf.config.mapping.ConfigMappingService"
                availability="mandatory"/>
@@ -23,7 +26,7 @@
         <argument ref="mapper"/>
         <argument>
             <set>
-                <value>${ddf.home}/etc/mappings</value>
+                <value>$[ddf.home]/etc/mappings</value>
             </set>
         </argument>
     </bean>

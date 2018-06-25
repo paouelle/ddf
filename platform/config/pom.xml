@@ -29,12 +29,16 @@
 
     <modules>
         <module>config-api</module>
+        <module>config-model-api</module>
         <module>config-mapping-api</module>
         <module>config-mapping-impl</module>
         <module>config-mapping-providers</module>
         <module>config-mapping-file-monitor</module>
         <module>config-mapping-bundle-monitor</module>
         <module>config-osgi-admin-agent</module>
+        <module>config-reader-api</module>
+        <module>config-reader-yaml</module>
+        <module>config-model-impl</module>
         <module>config-service</module>
     </modules>
 
