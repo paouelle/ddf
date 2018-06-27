@@ -17,39 +17,6 @@ import java.util.Optional;
 
 public interface ConfigMappingService {
   /**
-   * Location in an OSGI bundle for mapping rule documents used to provided default mapped
-   * properties. The configuration mapping service will process each entry in the mappings document
-   * directory.
-   */
-  public static final String MAPPINGS_DOCUMENTS_LOCATION = "OSGI-INF/mappings";
-
-  /**
-   * Binds a new provider to this mapping service or rebind it if it was already bound.
-   *
-   * @param provider the provider to be bound
-   */
-  public void bind(ConfigMappingProvider provider);
-
-  /**
-   * Rebinds an existing provider with a new one to this mapping service.
-   *
-   * @param old the old provider to be unbound
-   * @param provider the new provider to be bound
-   * @return <code>true</code> if the old provider was unbound and the new one bound; <code>false
-   *     </code> if the old provider was not bound (the new one will not have been bound)
-   */
-  public boolean rebind(ConfigMappingProvider old, ConfigMappingProvider provider);
-
-  /**
-   * Unbinds a provider from this mapping service.
-   *
-   * @param provider the provider to be unbound
-   * @return <code>true</code> if the provider was unbound; <code>false</code> if it wasn't already
-   *     bound
-   */
-  public boolean unbind(ConfigMappingProvider provider);
-
-  /**
    * Gets a configuration mapping given its name.
    *
    * @param name the unique name for the config mapping to retrieve

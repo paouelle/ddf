@@ -57,7 +57,6 @@ public class ConfigMappingServiceImpl implements ConfigMappingService, ConfigLis
     this.listeners = listeners;
   }
 
-  @Override
   public void bind(ConfigMappingProvider provider) {
     LOGGER.debug("ConfigMappingServiceImpl::bind({})", provider);
     if (providers.add(provider)) {
@@ -72,7 +71,6 @@ public class ConfigMappingServiceImpl implements ConfigMappingService, ConfigLis
     }
   }
 
-  @Override
   public boolean rebind(ConfigMappingProvider old, ConfigMappingProvider provider) {
     LOGGER.debug("ConfigMappingServiceImpl::rebind({}, {})", old, provider);
     // first check if the old one was bound and remove it
@@ -97,7 +95,6 @@ public class ConfigMappingServiceImpl implements ConfigMappingService, ConfigLis
     return true;
   }
 
-  @Override
   public boolean unbind(ConfigMappingProvider provider) {
     LOGGER.debug("ConfigMappingServiceImpl::unbind({})", provider);
     if (providers.remove(provider)) {

@@ -36,9 +36,11 @@ public interface ConfigMappingProvider extends Comparable<ConfigMappingProvider>
    * unless the provider is rebound with the {@link ConfigMappingService} which will re-compute
    * which config mappings are impacted by this change.
    *
-   * @return this provider's ranking priority
+   * @return this provider's ranking priority (defaults to 0)
    */
-  public int getRanking();
+  public default int getRanking() {
+    return 0;
+  };
 
   /**
    * Indicates whether this provider is only capable of providing partial properties or if it can
@@ -64,7 +66,9 @@ public interface ConfigMappingProvider extends Comparable<ConfigMappingProvider>
    * @return <code>true</code> if this provider can provide mapped dictionaries for the specified
    *     config mapping; <code>false</code> otherwise
    */
-  public boolean canProvideFor(ConfigMapping mapping);
+  public default boolean canProvideFor(ConfigMapping mapping) {
+    return canProvideFor(mapping.getId());
+  }
 
   /**
    * Checks if this provider can provide mapped dictionaries for a given configuration mapping.

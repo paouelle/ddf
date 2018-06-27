@@ -24,36 +24,10 @@
         <bundle>mvn:org.apache.commons/commons-lang3/${commons-lang3.version}</bundle>
     </feature>
 
-    <feature name="config-providers" version="${project.version}"
-             description="Configuration Providers">
-        <feature>config-api</feature>
-        <bundle>mvn:ddf.config/config-mapping-providers/${project.version}</bundle>
-        <bundle>mvn:org.codehaus.groovy/groovy-all/${groovy.version}</bundle>
-        <bundle>mvn:io.fastjson/boon/${boon.version}</bundle>
-    </feature>
-
     <feature name="config-mapping" version="${project.version}"
              description="Configuration Mapping">
         <feature>config-api</feature>
-        <feature>config-providers</feature>
         <bundle>mvn:ddf.config/config-mapping-impl/${project.version}</bundle>
-        <bundle>mvn:ddf.config/config-mapping-file-monitor/${project.version}</bundle>
-        <bundle>mvn:ddf.config/config-mapping-bundle-monitor/${project.version}</bundle>
-        <bundle>mvn:ddf.config/config-osgi-admin-agent/${project.version}</bundle>
-    </feature>
-
-    <feature name="config-file-monitor" version="${project.version}"
-             description="Configuration File Monitoring">
-        <feature>config-api</feature>
-        <feature>config-providers</feature>
-        <bundle>mvn:ddf.config/config-mapping-file-monitor/${project.version}</bundle>
-    </feature>
-
-    <feature name="config-bundle-monitor" version="${project.version}"
-             description="Configuration Bundle Monitor">
-        <feature>config-api</feature>
-        <feature>config-providers</feature>
-        <bundle>mvn:ddf.config/config-mapping-bundle-monitor/${project.version}</bundle>
     </feature>
 
     <feature name="config-admin-agent" version="${project.version}"
@@ -75,10 +49,7 @@
     <feature name="config-framework" version="${project.version}"
              description="Configuration framework for interfacing with the configuration framework.">
         <feature>config-api</feature>
-        <feature>config-providers</feature>
         <feature>config-mapping</feature>
-        <feature>config-file-monitor</feature>
-        <feature>config-bundle-monitor</feature>
         <feature>config-admin-agent</feature>
         <feature>config-service</feature>
     </feature>
