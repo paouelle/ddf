@@ -63,7 +63,7 @@ public class ConfigMappingImpl implements ConfigMapping {
         Collections.synchronizedSortedSet(providers.collect(Collectors.toCollection(TreeSet::new)));
     try {
       // first resolution to compute the initial dependents, use the ANY instance if none defined
-      // just in case the providers are referencing it. This will be useful providers capable of
+      // just in case the providers are referencing it. This will be useful for providers capable of
       // providing for any instances
       resolve(ConfigMapping.Id.of(id.getName(), id.getInstance().orElse(ConfigMappingImpl.ANY)));
     } catch (ConfigMappingException e) { // ignore
