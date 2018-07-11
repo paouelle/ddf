@@ -17,6 +17,13 @@ import java.util.Optional;
 
 public interface ConfigMappingService {
   /**
+   * Location in an OSGI bundle for mapping rule documents used to provided default mapped
+   * properties. The configuration mapping service will process each entry in the mappings document
+   * directory.
+   */
+  public static final String MAPPINGS_DOCUMENTS_LOCATION = "OSGI-INF/mappings";
+
+  /**
    * Gets a configuration mapping given its name.
    *
    * @param name the unique name for the config mapping to retrieve
