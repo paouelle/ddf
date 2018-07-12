@@ -42,6 +42,11 @@
                         <value>DDF_Custom_Mime_Type_Resolver</value>
                     </set>
                 </entry>
+                <entry key="org.codice.ddf.config.model.SourceConfig">
+                    <set>
+                        <value>Confluence_Federated_Source</value>
+                    </set>
+                </entry>
             </map>
         </property>
     </bean>

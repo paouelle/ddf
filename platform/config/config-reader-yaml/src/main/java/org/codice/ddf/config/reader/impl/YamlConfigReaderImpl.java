@@ -24,6 +24,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import org.codice.ddf.config.Config;
+import org.codice.ddf.config.model.impl.ConfluenceSourceConfigImpl;
 import org.codice.ddf.config.model.impl.CswFederationProfileConfigImpl;
 import org.codice.ddf.config.model.impl.MimeTypeConfigImpl;
 import org.codice.ddf.config.model.impl.NetworkProfileConfigImpl;
@@ -47,6 +48,7 @@ public class YamlConfigReaderImpl implements ConfigReader {
           .put(RegistryConfigImpl.class, "!registry")
           .put(MimeTypeConfigImpl.class, "!mime")
           .put(SchemaMimeTypeConfigImpl.class, "!schemaMime")
+          .put(ConfluenceSourceConfigImpl.class, "!confluenceSource")
           .put(NetworkProfileConfigImpl.class, "!networkProfile")
           .build();
 

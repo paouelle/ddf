@@ -13,12 +13,15 @@
  */
 package org.codice.ddf.config.model;
 
-import java.net.URL;
-import org.codice.ddf.config.ConfigGroup;
-import org.codice.ddf.config.ConfigType;
+import java.util.stream.Stream;
 
-@ConfigType
-public interface SourceConfig extends ConfigGroup {
+public interface ConfluenceSourceConfig extends SourceConfig {
 
-  URL getUrl();
+  String getUsername();
+
+  String getPassword();
+
+  Stream<String> excludedSpaces();
+
+  Stream<String> attributeOverrides();
 }

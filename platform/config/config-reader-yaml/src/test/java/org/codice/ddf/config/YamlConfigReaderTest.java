@@ -37,4 +37,15 @@ public class YamlConfigReaderTest {
       System.out.println("hash code: " + c.hashCode());
     }
   }
+
+  @Test
+  public void test13() throws Exception {
+    YamlConfigReaderImpl yc = new YamlConfigReaderImpl();
+    File config = new File(getClass().getClassLoader().getResource("sources.yaml").getFile());
+    Set<Config> configs = yc.read(config);
+    System.out.println(configs);
+    for (Config c : configs) {
+      System.out.println(c);
+    }
+  }
 }

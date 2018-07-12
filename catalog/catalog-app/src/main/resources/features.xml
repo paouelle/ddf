@@ -165,7 +165,7 @@
     </feature>
 
     <feature name="catalog-confluence-source" version="${project.version}"
-             description="Confluence source and transformer">
+             description="Confluence source, config mapping provider, and transformer">
         <feature version="${cxf.version}">cxf-jaxrs</feature>
         <bundle>mvn:ddf.catalog.confluence/catalog-confluence-source/${project.version}</bundle>
         <bundle>mvn:io.fastjson/boon/${boon.version}</bundle>

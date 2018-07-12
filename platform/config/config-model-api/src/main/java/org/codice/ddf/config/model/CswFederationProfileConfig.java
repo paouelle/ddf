@@ -13,9 +13,7 @@
  */
 package org.codice.ddf.config.model;
 
-import org.codice.ddf.config.ConfigType;
-
-@ConfigType
+// @ConfigType
 public interface CswFederationProfileConfig extends SourceConfig {
 
   @Override

@@ -48,7 +48,6 @@ public abstract class SourceConfigImpl extends AbstractConfigGroup implements So
       return true;
     } else if (obj instanceof SourceConfigImpl) {
       final SourceConfigImpl cfg = (SourceConfigImpl) obj;
-
       return Objects.equals(url, cfg.url) && super.equals(obj);
     }
     return false;
