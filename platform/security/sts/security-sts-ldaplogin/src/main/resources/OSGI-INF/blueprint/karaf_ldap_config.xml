@@ -18,6 +18,12 @@
         <bean class="ddf.security.sts.PropertiesConverter"/>
     </type-converters>
 
+  <bean id="ldapLoginConfigMappingProviderBean"
+    class="org.codice.ddf.ldap.ldaplogin.config.mapping.LdapLoginConfigMappingProvider"/>
+
+  <service ref="ldapLoginConfigMappingProviderBean"
+    interface="org.codice.ddf.config.mapping.ConfigMappingProvider"/>
+
     <cm:managed-service-factory
             id="ddf.ldap.ldaplogin.LdapLoginConfig.id"
             factory-pid="Ldap_Login_Config"
