@@ -47,6 +47,12 @@
                         <value>Confluence_Federated_Source</value>
                     </set>
                 </entry>
+                <entry key="org.codice.ddf.config.model.LdapConfig">
+                    <set>
+                        <value>Ldap_Login_Config</value>
+                        <value>Claims_Handler_Manager</value>
+                    </set>
+                </entry>
             </map>
         </property>
     </bean>
