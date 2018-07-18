@@ -11,7 +11,7 @@
  * License is distributed along with this program and can be found at
  * <http://www.gnu.org/licenses/lgpl.html>.
  */
-package ddf.ldap.ldaplogin.config.mapping;
+package ddf.security.sts.claimsHandler.config.mapping;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -24,9 +24,9 @@ import org.codice.ddf.config.model.LdapConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class LdapLoginConfigMappingProvider implements ConfigMappingProvider {
+public class LdapClaimsHandlerManagerConfigMappingProvider implements ConfigMappingProvider {
 
-  private static final String LDAP_LOGIN_FACTORY_PID = "Ldap_Login_Config";
+  private static final String LDAP_CLAIMS_HANDLER_MANAGER_FACTORY_PID = "Claims_Handler_Manager";
   private static final String LDAPS = "LDAPS";
   private static final String START_TLS_ENCRYPTION_CONFIG = "STARTTLS";
 
@@ -39,10 +39,11 @@ public class LdapLoginConfigMappingProvider implements ConfigMappingProvider {
   private static final String LOGIN_USER_ATTRIBUTE = "loginUserAttribute";
   private static final String BASE_USER_DN = "userBaseDn";
   private static final String BASE_GROUP_DN = "groupBaseDn";
+  private static final String GROUP_OBJECT_CLASS = "objectClass";
   private static final String GROUP_MEMBERSHIP_USER_ATTRIBUTE = "membershipUserAttribute";
 
   private static final Logger LOGGER =
-      LoggerFactory.getLogger(LdapLoginConfigMappingProvider.class);
+      LoggerFactory.getLogger(LdapClaimsHandlerManagerConfigMappingProvider.class);
 
   @Override
   public boolean isPartial() {
@@ -51,10 +52,10 @@ public class LdapLoginConfigMappingProvider implements ConfigMappingProvider {
 
   @Override
   public boolean canProvideFor(Id id) {
-    final boolean canProvideFor = id.getName().equals(LDAP_LOGIN_FACTORY_PID);
+    final boolean canProvideFor = id.getName().equals(LDAP_CLAIMS_HANDLER_MANAGER_FACTORY_PID);
     LOGGER.debug(
         "Can Config Mapping Provider [{}] provide a configuration for [{}]? {}",
-        LdapLoginConfigMappingProvider.class.getName(),
+        LdapClaimsHandlerManagerConfigMappingProvider.class.getName(),
         id.getName(),
         canProvideFor);
     return canProvideFor;
@@ -75,9 +76,13 @@ public class LdapLoginConfigMappingProvider implements ConfigMappingProvider {
     properties.put(LOGIN_USER_ATTRIBUTE, ldapConfig.getLoginUserAttribute());
     properties.put(BASE_USER_DN, ldapConfig.getBaseUserDn());
     properties.put(BASE_GROUP_DN, ldapConfig.getBaseGroupDn());
+    properties.put(GROUP_OBJECT_CLASS, ldapConfig.getGroupObjectClass());
     properties.put(GROUP_MEMBERSHIP_USER_ATTRIBUTE, ldapConfig.getGroupMembershipUserAttribute());
 
-    LOGGER.debug("Returning properties map [{}] for LDAP Login [{}].", properties, instanceId);
+    LOGGER.debug(
+        "Returning properties map [{}] for LDAP Claims Handler Manager [{}].",
+        properties,
+        instanceId);
 
     return properties;
   }

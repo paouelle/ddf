@@ -113,6 +113,24 @@
             <groupId>org.osgi</groupId>
             <artifactId>org.osgi.core</artifactId>
         </dependency>
+      <dependency>
+        <groupId>ddf.config</groupId>
+        <artifactId>config-api</artifactId>
+        <version>${project.version}</version>
+        <scope>compile</scope>
+      </dependency>
+        <dependency>
+            <groupId>ddf.config</groupId>
+            <artifactId>config-mapping-api</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>ddf.config</groupId>
+            <artifactId>config-model-api</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
     <build>
         <plugins>

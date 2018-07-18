@@ -40,6 +40,12 @@
 
     <reference id="encryptionService" interface="ddf.security.encryption.EncryptionService"/>
 
+    <bean id="ldapClaimsHandlerManagerConfigMappingProviderBean"
+      class="ddf.security.sts.claimsHandler.config.mapping.LdapClaimsHandlerManagerConfigMappingProvider"/>
+
+    <service ref="ldapClaimsHandlerManagerConfigMappingProviderBean"
+      interface="org.codice.ddf.config.mapping.ConfigMappingProvider"/>
+
     <cm:managed-service-factory
             id="ddf.security.sts.claimsHandler.ClaimsHandlerManager.id"
             factory-pid="Claims_Handler_Manager"
