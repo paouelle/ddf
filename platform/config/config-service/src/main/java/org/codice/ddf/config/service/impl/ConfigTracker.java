@@ -15,13 +15,13 @@ package org.codice.ddf.config.service.impl;
 
 import com.google.common.collect.MapDifference;
 import com.google.common.collect.Maps;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 import org.codice.ddf.config.Config;
 import org.codice.ddf.config.ConfigEvent;
 import org.codice.ddf.config.ConfigGroup;
@@ -40,7 +40,8 @@ class ConfigTracker {
 
   private final Map<String, Set<Config>> fileToConfig = Maps.newHashMap();
 
-  public ConfigEvent install(String filename, Set<Config> configs) {
+  @Nullable
+  public synchronized ConfigEvent install(String filename, Set<Config> configs) {
     LOGGER.error("##### Start ConfigServiceImpl::install");
     LOGGER.error("##### Received configs: {}", configs);
     fileToConfig.put(filename, configs);
@@ -50,57 +51,42 @@ class ConfigTracker {
     return diff();
   }
 
-  public ConfigEvent update(String filename, Set<Config> configs) {
+  @Nullable
+  public synchronized ConfigEvent update(String filename, Set<Config> configs) {
     LOGGER.error("##### Start ConfigServiceImpl::update");
     LOGGER.error("##### Received configs: {}", configs);
-    fileToConfig.put(filename, configs);
     updatePrevious();
+    processRemoval(filename);
     configs.forEach(this::updateCurrent);
     LOGGER.error("##### End ConfigServiceImpl::update");
     return diff();
   }
 
-  public ConfigEvent remove(String filename) {
+  @Nullable
+  public synchronized ConfigEvent remove(String filename) {
     LOGGER.error("##### Start ConfigServiceImpl::remove");
-    Set<Config> configs = fileToConfig.get(filename);
-    // current.values().removeIf(v -> v.equals(aValue));
-
-    Set<String> groupIds =
-        fileToConfig
-            .values()
-            .stream()
-            .flatMap(Collection::stream)
-            .filter(ConfigGroup.class::isInstance)
-            .map(ConfigGroup.class::cast)
-            .map(v -> v.getType() + "-" + v.getId())
-            .collect(Collectors.toSet());
-    Set<String> singletonIds =
-        fileToConfig
-            .values()
-            .stream()
-            .flatMap(Collection::stream)
-            .filter(ConfigSingleton.class::isInstance)
-            .map(ConfigSingleton.class::cast)
-            .map(ConfigSingleton::getType)
-            .map(Class::toString)
-            .collect(Collectors.toSet());
-
-    previous.keySet().removeAll(groupIds);
-    previous.keySet().removeAll(singletonIds);
-    current.keySet().removeAll(groupIds);
-    current.keySet().removeAll(singletonIds);
-
-    fileToConfig.remove(filename);
-
-    ConfigEvent configEvent =
-        new ConfigEventImpl(Collections.emptySet(), Collections.emptySet(), configs);
+    updatePrevious();
+    final Set<Config> configs = processRemoval(filename);
 
     LOGGER.error("##### End ConfigServiceImpl::remove");
-
-    return configEvent;
+    if (configs == null) {
+      return null;
+    }
+    return new ConfigEventImpl(Collections.emptySet(), Collections.emptySet(), configs);
   }
 
-  public ConfigEvent diff() {
+  @Nullable
+  private Set<Config> processRemoval(String filename) {
+    Set<Config> configs = fileToConfig.remove(filename);
+
+    if (configs != null) {
+      configs.stream().map(ConfigTracker::toKey).forEach(current::remove);
+    }
+    return configs;
+  }
+
+  @Nullable
+  private ConfigEvent diff() {
     LOGGER.error("##### Start ConfigServiceImpl::diff");
     MapDifference<String, Config> diff = Maps.difference(previous, current);
 
@@ -114,24 +100,31 @@ class ConfigTracker {
     Map<String, Config> entriesOnlyOnLeft = diff.entriesOnlyOnLeft();
     Set<Config> removedConfigs = entriesOnlyOnLeft.values().stream().collect(Collectors.toSet());
 
-    ConfigEvent configEvent = new ConfigEventImpl(addedConfigs, updatedConfigs, removedConfigs);
-
     LOGGER.error("##### End ConfigServiceImpl::diff");
-    return configEvent;
+    if (addedConfigs.isEmpty() && updatedConfigs.isEmpty() && removedConfigs.isEmpty()) {
+      return null;
+    }
+    return new ConfigEventImpl(addedConfigs, updatedConfigs, removedConfigs);
   }
 
   private void updatePrevious() {
     LOGGER.error("##### Start ConfigServiceImpl::updatePrevious()");
+    this.previous.clear();
     this.previous.putAll(this.current);
     LOGGER.error("##### End ConfigServiceImpl::updatePrevious()");
   }
 
   private void updateCurrent(Config c) {
-    if (c instanceof ConfigGroup) {
-      current.put(((ConfigGroup) c).getId(), c);
-    } else if (c instanceof ConfigSingleton) {
-      current.put(c.getType().getName(), c);
+    current.put(ConfigTracker.toKey(c), c);
+  }
+
+  private static String toKey(Config config) {
+    final String type = config.getType().getName();
+
+    if (config instanceof ConfigGroup) {
+      return type + "-" + ((ConfigGroup) config).getId();
     }
+    return type;
   }
 
   public <T extends ConfigSingleton> Optional<T> get(Class<T> type) {

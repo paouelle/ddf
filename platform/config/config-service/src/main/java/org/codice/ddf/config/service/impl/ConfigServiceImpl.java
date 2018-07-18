@@ -24,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 import org.apache.felix.fileinstall.ArtifactInstaller;
 import org.codice.ddf.config.Config;
 import org.codice.ddf.config.ConfigEvent;
@@ -112,10 +113,12 @@ public class ConfigServiceImpl implements ConfigService, ArtifactInstaller {
         && paths.stream().anyMatch(path::startsWith);
   }
 
-  private void configChanged(ConfigEvent configEvent) {
-    LOGGER.error("##### Start ConfigServiceImpl::configChanged");
-    for (ConfigListener listener : configListeners) {
-      ConfigServiceImpl.EXECUTOR.execute(() -> listener.configChanged(configEvent));
+  private void configChanged(@Nullable ConfigEvent configEvent) {
+    LOGGER.error("##### Start ConfigServiceImpl::configChanged({})", configEvent);
+    if (configEvent != null) {
+      for (ConfigListener listener : configListeners) {
+        ConfigServiceImpl.EXECUTOR.execute(() -> listener.configChanged(configEvent));
+      }
     }
     LOGGER.error("##### End ConfigServiceImpl::configChanged");
   }

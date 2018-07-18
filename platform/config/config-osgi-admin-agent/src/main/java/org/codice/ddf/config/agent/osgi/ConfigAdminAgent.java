@@ -68,10 +68,10 @@ import org.slf4j.LoggerFactory;
 
 public class ConfigAdminAgent
     implements SynchronousConfigurationListener,
-        ServiceListener,
-        ConfigMappingListener,
-        ConfigListener,
-        Closeable {
+    ServiceListener,
+    ConfigMappingListener,
+    ConfigListener,
+    Closeable {
   public static final String INSTANCE_KEY = "org.codice.ddf.config.instance";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ConfigAdminAgent.class);
@@ -228,9 +228,9 @@ public class ConfigAdminAgent
             break;
           case ConfigurationEvent.CM_DELETED:
             cache.remove(pid);
-            return;
+            break;
           default:
-            return;
+            break;
         }
       } catch (InvalidSyntaxException | IOException | ConfigMappingException e) { // ignore
         LOGGER.warn("failed to process event for config object '{}': {}", pid, e.getMessage());
