@@ -1,0 +1,63 @@
+--- 
+!ldap
+id: ldap123
+
+# ldaplogin.ldapUrl
+# ldapclaimshandler.url
+# "LDAP or LDAPS server and port"
+hostname: 'example.com'
+port: 8181
+
+# ldaplogin.startTls
+# ldapclaimshandler.startTls
+# "Determines whether or not to use StartTLS when connecting via the ldap protocol. This setting is ignored if the URL uses ldaps."
+# ENUM: [NONE, LDAPS, STARTTLS]
+encryption: LDAPS
+
+# ldaplogin.ldapBindUserDn
+# ldapclaimshandler.ldapBindUserDn
+# "DN of the user to bind with LDAP. This user should have the ability to verify passwords and read attributes for any user."
+bindUserDn: cn\=admin
+
+# ldaplogin.ldapBindUserPass
+# ldapclaimshandler.password
+# "Password used to bind user with LDAP."
+bindUserPass: dolphins
+
+# ldaplogin.bindMethod
+# ldapclaimshandler.bindMethod
+# No description given.
+# ENUM: [SIMPLE, DIGESTMD5SASL, SASL, GSSAPI SASL] #ENUM
+bindMethod: SIMPLE
+
+# ldapclaimshandler.loginUserAttribute
+# ldaplogin.loginUserAttribute
+# "Attribute used as the login username. Usually this is uid, cn, or something similar."
+loginUserAttribute: uid
+
+# ldaplogin.userBaseDn
+# ldapclaimshandler.userBaseDn
+# "Full LDAP path to where users can be found."
+baseUserDn: ou=users,dc=example,dc=com
+
+# ldaplogin.groupBaseDn
+# ldapclaimshandler.groupBaseDn
+# "Full LDAP path to where groups can be found."
+baseGroupDn: ou=groups,dc=example,dc=com
+
+# security-sts-ldapclaimshandler.objectClass
+# "ObjectClass that defines structure for group membership in LDAP. Usually this is groupOfNames or groupOfUniqueNames."
+groupObjectClass: groupOfUniqueNames 
+
+# security-sts-ldapclaimshandler/ldaplogin.membershipUserAttribute
+# "Attribute used as the membership attribute for the user in the group. Usually this is uid, cn, or something similar."
+# ldapclaimshandler.membershipUserAttribute
+# "Attribute used as the membership attribute for the user in the group. Usually this is uid, cn, or something similar."
+groupMembershipUserAttribute: uid
+
+# security-sts-ldapclaimshandler.memberNameAttribute
+# "Attribute used to designate the user's name as a member of the group in LDAP. Usually this is member or uniqueMember."
+# NOTE:  If the `groupObjectClass` is `groupOfNames` we can infer that the `memberNameAttribute` is `member`.
+# NOTE: If the `groupObjectClass` is `groupOfUniqueNames` we can infer that the `memberNameAttribute` is `uniqueMember` (see groupOfNames and groupOfUniqueNames in https://tools.ietf.org/html/rfc4519).
+# memberNameAttribute: uniqueMember 
+...

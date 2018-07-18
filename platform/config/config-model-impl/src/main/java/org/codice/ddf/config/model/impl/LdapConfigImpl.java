@@ -11,7 +11,6 @@
  * License is distributed along with this program and can be found at
  * <http://www.gnu.org/licenses/lgpl.html>.
  */
-
 package org.codice.ddf.config.model.impl;
 
 import org.codice.ddf.config.model.LdapConfig;

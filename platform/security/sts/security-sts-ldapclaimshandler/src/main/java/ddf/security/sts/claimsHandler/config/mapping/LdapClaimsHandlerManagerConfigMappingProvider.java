@@ -31,10 +31,10 @@ public class LdapClaimsHandlerManagerConfigMappingProvider implements ConfigMapp
   private static final String START_TLS_ENCRYPTION_CONFIG = "STARTTLS";
 
   // configuration attribute names
-  private static final String LDAP_URL = "ldapUrl";
+  private static final String LDAP_URL = "url";
   private static final String START_TLS_ATTRIBUTE = "startTls";
   private static final String BIND_USER_DN = "ldapBindUserDn";
-  private static final String BIND_USER_PASS = "ldapBindUserPass";
+  private static final String BIND_USER_PASS = "password";
   private static final String BIND_METHOD = "bindMethod";
   private static final String LOGIN_USER_ATTRIBUTE = "loginUserAttribute";
   private static final String BASE_USER_DN = "userBaseDn";
