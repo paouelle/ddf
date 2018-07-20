@@ -12,7 +12,7 @@
  * <http://www.gnu.org/licenses/lgpl.html>.
  */
 
-package ddf.ldap.ldaplogin.config.mapping;
+package ddf.security.sts.claimsHandler.config.mapping;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -27,25 +27,26 @@ import org.codice.ddf.config.model.LdapConfig;
 import org.junit.Before;
 import org.junit.Test;
 
-public class LdapLoginConfigMappingProviderTest {
+public class LdapClaimsHandlerManagerConfigMappingProviderTest {
 
-  private LdapLoginConfigMappingProvider ldapLoginConfigMappingProvider;
-  private static final String LDAP_LOGIN_FACTORY_PID = "Ldap_Login_Config";
+  private LdapClaimsHandlerManagerConfigMappingProvider ldapClaimsHandlerManagerConfigMappingProvider;
+  private static final String LDAP_CLAIMS_HANDLER_MANAGER_FACTORY_PID = "Claims_Handler_Manager";
 
   // configuration attribute names
-  private static final String LDAP_URL = "ldapUrl";
+  private static final String LDAP_URL = "url";
   private static final String START_TLS_ATTRIBUTE = "startTls";
   private static final String BIND_USER_DN = "ldapBindUserDn";
-  private static final String BIND_USER_PASS = "ldapBindUserPass";
+  private static final String BIND_USER_PASS = "password";
   private static final String BIND_METHOD = "bindMethod";
   private static final String LOGIN_USER_ATTRIBUTE = "loginUserAttribute";
   private static final String BASE_USER_DN = "userBaseDn";
   private static final String BASE_GROUP_DN = "groupBaseDn";
+  private static final String GROUP_OBJECT_CLASS = "objectClass";
   private static final String GROUP_MEMBERSHIP_USER_ATTRIBUTE = "membershipUserAttribute";
 
   @Before
   public void setup() {
-    ldapLoginConfigMappingProvider = new LdapLoginConfigMappingProvider();
+    ldapClaimsHandlerManagerConfigMappingProvider = new LdapClaimsHandlerManagerConfigMappingProvider();
   }
 
   @Test
@@ -53,10 +54,10 @@ public class LdapLoginConfigMappingProviderTest {
     ConfigMapping mockConfigMapping = mock(ConfigMapping.class);
     ConfigMapping.Id mockConfigMappingId = mock(ConfigMapping.Id.class);
     doReturn(mockConfigMappingId).when(mockConfigMapping).getId();
-    doReturn(LDAP_LOGIN_FACTORY_PID).when(mockConfigMappingId).getName();
+    doReturn(LDAP_CLAIMS_HANDLER_MANAGER_FACTORY_PID).when(mockConfigMappingId).getName();
 
-    assertTrue(ldapLoginConfigMappingProvider.canProvideFor(mockConfigMapping));
-    assertTrue(ldapLoginConfigMappingProvider.canProvideFor(mockConfigMappingId));
+    assertTrue(ldapClaimsHandlerManagerConfigMappingProvider.canProvideFor(mockConfigMapping));
+    assertTrue(ldapClaimsHandlerManagerConfigMappingProvider.canProvideFor(mockConfigMappingId));
   }
 
   @Test
@@ -64,13 +65,13 @@ public class LdapLoginConfigMappingProviderTest {
     String instanceId = "instance123";
 
     ConfigMapping.Id mockConfigMappingId = mock(ConfigMapping.Id.class);
-    doReturn(LDAP_LOGIN_FACTORY_PID).when(mockConfigMappingId).getName();
+    doReturn(LDAP_CLAIMS_HANDLER_MANAGER_FACTORY_PID).when(mockConfigMappingId).getName();
     doReturn(Optional.of(instanceId)).when(mockConfigMappingId).getInstance();
 
     ConfigService mockConfigService = mock(ConfigService.class);
     doReturn(Optional.of(getMockLdapConfig())).when(mockConfigService).get(LdapConfig.class, instanceId);
 
-    Map<String, Object> result = ldapLoginConfigMappingProvider
+    Map<String, Object> result = ldapClaimsHandlerManagerConfigMappingProvider
         .provide(mockConfigMappingId, mockConfigService);
 
     assertEquals("ldaps://example.com:8181", result.get(LDAP_URL));
@@ -81,6 +82,7 @@ public class LdapLoginConfigMappingProviderTest {
     assertEquals("uid", result.get(LOGIN_USER_ATTRIBUTE));
     assertEquals("ou=users,dc=example,dc=com", result.get(BASE_USER_DN));
     assertEquals("ou=groups,dc=example,dc=com", result.get(BASE_GROUP_DN));
+    assertEquals("groupOfUniqueNames", result.get(GROUP_OBJECT_CLASS));
     assertEquals("uid", result.get(GROUP_MEMBERSHIP_USER_ATTRIBUTE));
   }
 
@@ -97,8 +99,10 @@ public class LdapLoginConfigMappingProviderTest {
     doReturn("uid").when(ldapConfig).getLoginUserAttribute();
     doReturn("ou=users,dc=example,dc=com").when(ldapConfig).getBaseUserDn();
     doReturn("ou=groups,dc=example,dc=com").when(ldapConfig).getBaseGroupDn();
+    doReturn("groupOfUniqueNames").when(ldapConfig).getGroupObjectClass();
     doReturn("uid").when(ldapConfig).getGroupMembershipUserAttribute();
 
     return ldapConfig;
   }
 }
+
