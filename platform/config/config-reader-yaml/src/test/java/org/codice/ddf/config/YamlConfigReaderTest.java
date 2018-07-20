@@ -13,12 +13,14 @@
  */
 package org.codice.ddf.config;
 
-import static org.junit.Assert.assertEquals;
+import static junit.framework.TestCase.assertEquals;
+import static junit.framework.TestCase.fail;
 
 import java.io.File;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.codice.ddf.config.model.ConfluenceSourceConfig;
+import org.codice.ddf.config.model.LdapConfig;
 import org.codice.ddf.config.model.NetworkProfileConfig;
 import org.codice.ddf.config.reader.impl.YamlConfigReaderImpl;
 import org.junit.Test;
@@ -60,5 +62,36 @@ public class YamlConfigReaderTest {
           ((ConfluenceSourceConfig) c).attributeOverrides().collect(Collectors.toList()));
       System.out.println("hash code: " + c.hashCode());
     }
+  }
+
+  @Test
+  public void testReadLdap() throws Exception {
+    YamlConfigReaderImpl yc = new YamlConfigReaderImpl();
+    File config = new File(getClass().getClassLoader().getResource("ldap.yml").getFile());
+    Set<Config> configs = yc.read(config);
+
+    LdapConfig ldapConfig = null;
+    for (Config c : configs) {
+      if (c instanceof LdapConfig) {
+        ldapConfig = (LdapConfig) c;
+      }
+    }
+
+    if (ldapConfig == null) {
+      fail("Ldap Config object was not generated from the Ldap YAML file.");
+    }
+
+    assertEquals(ldapConfig.getId(), "ldap123");
+    assertEquals(ldapConfig.getHostname(), "example.com");
+    assertEquals(ldapConfig.getPort(), 8181);
+    assertEquals(ldapConfig.getEncryption(), "LDAPS");
+    assertEquals(ldapConfig.getBindUserDn(), "cn\\=admin");
+    assertEquals(ldapConfig.getBindUserPass(), "dolphins");
+    assertEquals(ldapConfig.getBindMethod(), "SIMPLE");
+    assertEquals(ldapConfig.getLoginUserAttribute(), "uid");
+    assertEquals(ldapConfig.getBaseUserDn(), "ou=users,dc=example,dc=com");
+    assertEquals(ldapConfig.getBaseGroupDn(), "ou=groups,dc=example,dc=com");
+    assertEquals(ldapConfig.getGroupObjectClass(), "groupOfUniqueNames");
+    assertEquals(ldapConfig.getGroupMembershipUserAttribute(), "uid");
   }
 }
