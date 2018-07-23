@@ -44,6 +44,14 @@ public class LdapClaimsHandlerManagerConfigMappingProviderTest {
   private static final String GROUP_OBJECT_CLASS = "objectClass";
   private static final String GROUP_MEMBERSHIP_USER_ATTRIBUTE = "membershipUserAttribute";
 
+  // default configuration attribute names
+  private static final String OVERRIDE_CERT_DN = "overrideCertDn";
+  private static final String PROPERTY_FILE_LOCATION = "propertyFileLocation";
+
+  // default configuration values
+  private static final boolean OVERRIDE_CERT_DN_DEFAULT = false;
+  private static final String PROPERTY_FILE_LOCATION_DEFAULT = "etc/ws-security/attributeMap.properties";
+
   @Before
   public void setup() {
     ldapClaimsHandlerManagerConfigMappingProvider = new LdapClaimsHandlerManagerConfigMappingProvider();
@@ -74,6 +82,7 @@ public class LdapClaimsHandlerManagerConfigMappingProviderTest {
     Map<String, Object> result = ldapClaimsHandlerManagerConfigMappingProvider
         .provide(mockConfigMappingId, mockConfigService);
 
+    // verify values were popualted
     assertEquals("ldaps://example.com:8181", result.get(LDAP_URL));
     assertEquals(false, result.get(START_TLS_ATTRIBUTE));
     assertEquals("cn\\=admin", result.get(BIND_USER_DN));
@@ -84,6 +93,10 @@ public class LdapClaimsHandlerManagerConfigMappingProviderTest {
     assertEquals("ou=groups,dc=example,dc=com", result.get(BASE_GROUP_DN));
     assertEquals("groupOfUniqueNames", result.get(GROUP_OBJECT_CLASS));
     assertEquals("uid", result.get(GROUP_MEMBERSHIP_USER_ATTRIBUTE));
+
+    // verify defaults were populated
+    assertEquals(OVERRIDE_CERT_DN_DEFAULT, result.get(OVERRIDE_CERT_DN));
+    assertEquals(PROPERTY_FILE_LOCATION_DEFAULT, result.get(PROPERTY_FILE_LOCATION));
   }
 
   private LdapConfig getMockLdapConfig() {

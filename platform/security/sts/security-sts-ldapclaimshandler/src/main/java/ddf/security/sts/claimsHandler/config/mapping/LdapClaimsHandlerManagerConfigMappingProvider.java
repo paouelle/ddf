@@ -42,6 +42,14 @@ public class LdapClaimsHandlerManagerConfigMappingProvider implements ConfigMapp
   private static final String GROUP_OBJECT_CLASS = "objectClass";
   private static final String GROUP_MEMBERSHIP_USER_ATTRIBUTE = "membershipUserAttribute";
 
+  // default configuration attribute names
+  private static final String OVERRIDE_CERT_DN = "overrideCertDn";
+  private static final String PROPERTY_FILE_LOCATION = "propertyFileLocation";
+
+  // default configuration values
+  private static final boolean OVERRIDE_CERT_DN_DEFAULT = false;
+  private static final String PROPERTY_FILE_LOCATION_DEFAULT = "etc/ws-security/attributeMap.properties";
+
   private static final Logger LOGGER =
       LoggerFactory.getLogger(LdapClaimsHandlerManagerConfigMappingProvider.class);
 
@@ -78,6 +86,10 @@ public class LdapClaimsHandlerManagerConfigMappingProvider implements ConfigMapp
     properties.put(BASE_GROUP_DN, ldapConfig.getBaseGroupDn());
     properties.put(GROUP_OBJECT_CLASS, ldapConfig.getGroupObjectClass());
     properties.put(GROUP_MEMBERSHIP_USER_ATTRIBUTE, ldapConfig.getGroupMembershipUserAttribute());
+
+    //defaults
+    properties.put(OVERRIDE_CERT_DN, OVERRIDE_CERT_DN_DEFAULT);
+    properties.put(PROPERTY_FILE_LOCATION, PROPERTY_FILE_LOCATION_DEFAULT);
 
     LOGGER.debug(
         "Returning properties map [{}] for LDAP Claims Handler Manager [{}].",
