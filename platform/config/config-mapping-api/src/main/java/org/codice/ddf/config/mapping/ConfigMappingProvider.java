@@ -86,11 +86,18 @@ public interface ConfigMappingProvider extends Comparable<ConfigMappingProvider>
   /**
    * Provides the mapped dictionary for a given configuration mapping.
    *
+   * <p><i>Note:</i> Arrays, {@link Map}s, {@link java.util.Set}s, and {@link java.util.List}s will
+   * be deep cloned by the configuration mapping service before being returned from {@link
+   * ConfigMapping#resolve()}. {@link Cloneable}s will be cloned while all others will be returned
+   * as is.
+   *
    * @param id the unique config mapping id for the mapped properties to provide
    * @param config the configuration to use when computing the mapper properties
    * @return a map corresponding to all mapped properties and their current values after
    *     re-evaluating any internal rules defined
    * @throws ConfigMappingException if a failure occurred while resolving this config mapping
+   * @throws ConfigMappingUnavailableException if the provider is unable to provide for the
+   *     specified mapping object because information (e.g. config objects) are not available
    */
   public Map<String, Object> provide(ConfigMapping.Id id, ConfigService config)
       throws ConfigMappingException;

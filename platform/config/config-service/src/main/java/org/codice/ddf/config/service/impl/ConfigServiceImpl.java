@@ -54,7 +54,7 @@ public class ConfigServiceImpl implements ConfigService, ArtifactInstaller {
 
   public ConfigServiceImpl(
       ConfigReader configReader, List<ConfigListener> configListeners, Set<String> paths) {
-    LOGGER.error("##### ConfigServiceImpl::Ctor");
+    LOGGER.debug("ConfigServiceImpl({}, {}, {})", configReader, configListeners, paths);
     this.configReader = configReader;
     this.configListeners = configListeners;
     this.paths = paths.stream().map(File::new).map(File::toPath).collect(Collectors.toSet());
@@ -62,46 +62,47 @@ public class ConfigServiceImpl implements ConfigService, ArtifactInstaller {
 
   @Override
   public <T extends ConfigSingleton> Optional<T> get(Class<T> clazz) {
-    LOGGER.error("##### ConfigServiceImpl::get({})", clazz);
-    return configTracker.get(clazz);
+    final Optional<T> cfg = configTracker.get(clazz);
+
+    LOGGER.debug("ConfigServiceImpl:get({}) = {}", clazz, cfg);
+    return cfg;
   }
 
   @Override
   public <T extends ConfigGroup> Optional<T> get(Class<T> clazz, String id) {
-    LOGGER.error("##### ConfigServiceImpl::get({}, {})", clazz, id);
-    return configTracker.get(clazz, id);
+    final Optional<T> cfg = configTracker.get(clazz, id);
+
+    LOGGER.debug("ConfigServiceImpl:get({}, {}) = {}", clazz, id, cfg);
+    return cfg;
   }
 
   @Override
   public <T extends ConfigGroup> Stream<T> configs(Class<T> clazz) {
-    LOGGER.error("##### ConfigServiceImpl::configs({})", clazz);
+    LOGGER.debug("ConfigServiceImpl:configs({})", clazz);
     return configTracker.configs(clazz);
   }
 
   @Override
-  public void install(File config) throws Exception {
-    LOGGER.error("##### Start ConfigServiceImpl::install");
+  public void install(File config) {
+    LOGGER.debug("ConfigServiceImpl:install({})", config);
     Set<Config> configs = read(config);
     ConfigEvent configEvent = configTracker.install(config.getName(), configs);
     configChanged(configEvent);
-    LOGGER.error("##### End ConfigServiceImpl::install");
   }
 
   @Override
-  public void update(File config) throws Exception {
-    LOGGER.error("##### Start ConfigServiceImpl::update");
+  public void update(File config) {
+    LOGGER.debug("ConfigServiceImpl:update({})", config);
     Set<Config> configs = read(config);
     ConfigEvent configEvent = configTracker.update(config.getName(), configs);
     configChanged(configEvent);
-    LOGGER.error("##### End ConfigServiceImpl::update");
   }
 
   @Override
-  public void uninstall(File config) throws Exception {
-    LOGGER.error("##### Start ConfigServiceImpl::uninstall");
+  public void uninstall(File config) {
+    LOGGER.debug("ConfigServiceImpl:uninstall({})", config);
     ConfigEvent configEvent = configTracker.remove(config.getName());
     configChanged(configEvent);
-    LOGGER.error("##### End ConfigServiceImpl::uninstall");
   }
 
   @Override
@@ -114,18 +115,21 @@ public class ConfigServiceImpl implements ConfigService, ArtifactInstaller {
   }
 
   private void configChanged(@Nullable ConfigEvent configEvent) {
-    LOGGER.error("##### Start ConfigServiceImpl::configChanged({})", configEvent);
+    LOGGER.debug("ConfigServiceImpl:configChanged({})", configEvent);
     if (configEvent != null) {
       for (ConfigListener listener : configListeners) {
         ConfigServiceImpl.EXECUTOR.execute(() -> listener.configChanged(configEvent));
       }
     }
-    LOGGER.error("##### End ConfigServiceImpl::configChanged");
   }
 
   private Set<Config> read(File config) {
+    LOGGER.debug("ConfigServiceImpl:read({})", config);
     try {
-      return configReader.read(config);
+      final Set<Config> cfgs = configReader.read(config);
+
+      LOGGER.debug("ConfigServiceImpl:read({}) = {}", config, cfgs);
+      return cfgs;
     } catch (IOException e) {
       LOGGER.error("Unable to read configuration file: {}", config.getAbsoluteFile());
       return ImmutableSet.of();

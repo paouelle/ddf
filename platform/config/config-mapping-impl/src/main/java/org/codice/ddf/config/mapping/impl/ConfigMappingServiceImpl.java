@@ -27,7 +27,6 @@ import org.codice.ddf.config.ConfigEvent;
 import org.codice.ddf.config.ConfigListener;
 import org.codice.ddf.config.ConfigService;
 import org.codice.ddf.config.mapping.ConfigMapping;
-import org.codice.ddf.config.mapping.ConfigMappingEvent;
 import org.codice.ddf.config.mapping.ConfigMappingEvent.Type;
 import org.codice.ddf.config.mapping.ConfigMappingListener;
 import org.codice.ddf.config.mapping.ConfigMappingProvider;
@@ -134,70 +133,50 @@ public class ConfigMappingServiceImpl implements ConfigMappingService, ConfigLis
     mappings
         .values()
         .stream()
-        .filter(ConfigMappingImpl::isAvailable)
         .filter(m -> m.isAffectedBy(event))
-        .forEach(this::notifyUpdated);
+        .forEach(m -> notify(m.recompute(), m));
   }
 
-  @Nullable
+  void notify(@Nullable Type type, ConfigMapping mapping) {
+    LOGGER.debug("ConfigMappingServiceImpl::notify({}, {})", type, mapping);
+
+    if (type == null) { // nothing to notify
+      return;
+    }
+    final ConfigMappingEventImpl event = new ConfigMappingEventImpl(type, mapping);
+
+    listeners.forEach(
+        l -> ConfigMappingServiceImpl.EXECUTOR.execute(() -> l.mappingChanged(event)));
+  }
+
   private ConfigMappingImpl newMapping(ConfigMapping.Id id) {
     LOGGER.debug("ConfigMappingServiceImpl::newMapping({})", id);
     // search all registered providers to find those that supports the specified mapping
     final ConfigMappingImpl mapping =
-        new ConfigMappingImpl(config, id, providers.stream().filter(p -> p.canProvideFor(id)));
+        new ConfigMappingImpl(
+            this, config, id, providers.stream().filter(p -> p.canProvideFor(id)));
+    final Type state = mapping.getState();
 
-    if (mapping.isAvailable()) {
-      notify(Type.CREATED, mapping);
-    }
+    if (state != Type.REMOVED) {
+      notify(state, mapping);
+    } // else - don't bother about notifying for those since they never existed before anyway
     return mapping;
   }
 
   private void bind(ConfigMappingProvider provider, ConfigMappingImpl mapping) {
     LOGGER.debug("ConfigMappingServiceImpl::bind({}, {})", provider, mapping);
-    final boolean wasAvailable = mapping.isAvailable();
-
-    if (mapping.bind(provider)) {
-      LOGGER.debug("mapping was updated; wasAvailable={}", wasAvailable);
-      notify(!wasAvailable ? Type.CREATED : Type.UPDATED, mapping);
-    }
+    notify(mapping.bind(provider), mapping);
   }
 
   private void rebind(
       ConfigMappingProvider old, ConfigMappingProvider provider, ConfigMappingImpl mapping) {
     LOGGER.debug("ConfigMappingServiceImpl::rebind({}, {}, {})", old, provider, mapping);
-    final boolean wasAvailable = mapping.isAvailable();
-
-    if (mapping.rebind(old, provider)) {
-      final boolean isAvailable = mapping.isAvailable();
-
-      LOGGER.debug(
-          "mapping was updated; wasAvailable = {}, isAvailable = {}", wasAvailable, isAvailable);
-      if (wasAvailable) {
-        notify(!isAvailable ? Type.REMOVED : Type.UPDATED, mapping);
-      } else if (isAvailable) {
-        notify(Type.CREATED, mapping);
-      }
-    }
+    notify(mapping.rebind(old, provider), mapping);
   }
 
   private void unbind(ConfigMappingProvider provider, ConfigMappingImpl mapping) {
     LOGGER.debug("ConfigMappingServiceImpl::unbind({}, {})", provider, mapping);
-    if (mapping.unbind(provider)) {
-      LOGGER.debug("mapping was updated");
-      notify(mapping.isAvailable() ? Type.UPDATED : Type.REMOVED, mapping);
-    }
-  }
-
-  private void notifyUpdated(ConfigMapping mapping) {
-    notify(Type.UPDATED, mapping);
-  }
-
-  private void notify(ConfigMappingEvent.Type type, ConfigMapping mapping) {
-    LOGGER.debug("ConfigMappingServiceImpl::notify({}, {})", type, mapping);
-    final ConfigMappingEventImpl event = new ConfigMappingEventImpl(type, mapping);
-
-    listeners.forEach(
-        l -> ConfigMappingServiceImpl.EXECUTOR.execute(() -> l.mappingChanged(event)));
+    notify(mapping.unbind(provider), mapping);
   }
 
   private static ExecutorService createExecutor() throws NumberFormatException {

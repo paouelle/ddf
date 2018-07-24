@@ -14,14 +14,13 @@
 package org.codice.ddf.confluence.source.config.mapping;
 
 import java.net.URL;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import org.codice.ddf.config.ConfigService;
 import org.codice.ddf.config.mapping.ConfigMapping;
 import org.codice.ddf.config.mapping.ConfigMappingException;
 import org.codice.ddf.config.mapping.ConfigMappingProvider;
+import org.codice.ddf.config.mapping.ConfigMappingUnavailableException;
 import org.codice.ddf.config.model.ConfluenceSourceConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,12 +63,12 @@ public class ConfluenceConfigMappingProvider implements ConfigMappingProvider {
   private static final String EXPANDED_SECTIONS = "expandedSections";
 
   private static final String[] DEFAULT_EXPANDED_SECTIONS = {
-    "metadata.labels",
-    "space",
-    "history.contributors.publishers.users",
-    "history.lastUpdated",
-    "restrictions.read.restrictions.group",
-    "restrictions.read.restrictions.user"
+      "metadata.labels",
+      "space",
+      "history.contributors.publishers.users",
+      "history.lastUpdated",
+      "restrictions.read.restrictions.group",
+      "restrictions.read.restrictions.user"
   };
 
   @Override
@@ -92,14 +91,15 @@ public class ConfluenceConfigMappingProvider implements ConfigMappingProvider {
   public Map<String, Object> provide(ConfigMapping.Id id, ConfigService configService)
       throws ConfigMappingException {
     final String instanceId = getInstanceId(id);
-    final Optional<ConfluenceSourceConfig> optionalConfluenceSourceConfig =
-        configService.get(ConfluenceSourceConfig.class, instanceId);
+    final ConfluenceSourceConfig config =
+        configService.get(ConfluenceSourceConfig.class, instanceId).orElseThrow(
+            () ->
+                new ConfigMappingUnavailableException(
+                    "confluence source config '"
+                        + instanceId
+                        + "' not found for config mapping object: "
+                        + id));
 
-    if (!optionalConfluenceSourceConfig.isPresent()) {
-      return Collections.EMPTY_MAP;
-    }
-
-    final ConfluenceSourceConfig config = optionalConfluenceSourceConfig.get();
     final URL url = config.getUrl();
     final String username = config.getUsername();
     final String password = config.getPassword();
@@ -129,7 +129,8 @@ public class ConfluenceConfigMappingProvider implements ConfigMappingProvider {
   private String getInstanceId(ConfigMapping.Id id) {
     return id.getInstance()
         .orElseThrow(
-            () -> new ConfigMappingException("No instance found in Config Mapping ID: " + id));
+            () -> new ConfigMappingUnavailableException(
+                "No instance found in Config Mapping ID: " + id));
   }
 
   private void setExcludedSpaces(ConfluenceSourceConfig config, Map<String, Object> properties) {

@@ -227,6 +227,8 @@ public class ConfigAdminAgent
             }
             break;
           case ConfigurationEvent.CM_DELETED:
+            // TODO: should check if it is an object that should not be deleted and recreate it
+            // that is, if there is a corresponding mapping then it shouldn't be deleted
             cache.remove(pid);
             break;
           default:

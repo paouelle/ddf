@@ -20,6 +20,7 @@ import org.codice.ddf.config.ConfigService;
 import org.codice.ddf.config.mapping.ConfigMapping.Id;
 import org.codice.ddf.config.mapping.ConfigMappingException;
 import org.codice.ddf.config.mapping.ConfigMappingProvider;
+import org.codice.ddf.config.mapping.ConfigMappingUnavailableException;
 import org.codice.ddf.config.model.MimeTypeConfig;
 import org.codice.ddf.config.model.SchemaMimeTypeConfig;
 
@@ -38,24 +39,31 @@ public class CustomMimeTypeConfigProvider implements ConfigMappingProvider {
 
   @Override
   public Map<String, Object> provide(Id id, ConfigService config) throws ConfigMappingException {
-    final Map<String, Object> properties = new HashMap<>(8);
     final String instance =
         id.getInstance()
             .orElseThrow(
                 () ->
-                    new ConfigMappingException(
-                        "missing instance id for mime config mapping object: " + id));
-    final MimeTypeConfig mime = config.get(MimeTypeConfig.class, instance).orElse(null);
+                    new ConfigMappingUnavailableException(
+                        "missing instance id for config mapping object: " + id));
+    final MimeTypeConfig mime =
+        config
+            .get(MimeTypeConfig.class, instance)
+            .orElseThrow(
+                () ->
+                    new ConfigMappingUnavailableException(
+                        "mime config '"
+                            + instance
+                            + "' not found for config mapping object: "
+                            + id));
+    final Map<String, Object> properties = new HashMap<>(8);
 
-    if (mime != null) {
-      properties.put(
-          "customMimeTypes",
-          mime.mappings().map(CustomMimeTypeConfigProvider::toString).toArray(String[]::new));
-      properties.put("name", mime.getName());
-      properties.put("priority", mime.getPriority());
-      if (mime instanceof SchemaMimeTypeConfig) {
-        properties.put("schema", ((SchemaMimeTypeConfig) mime).getSchema());
-      }
+    properties.put(
+        "customMimeTypes",
+        mime.mappings().map(CustomMimeTypeConfigProvider::toString).toArray(String[]::new));
+    properties.put("name", mime.getName());
+    properties.put("priority", mime.getPriority());
+    if (mime instanceof SchemaMimeTypeConfig) {
+      properties.put("schema", ((SchemaMimeTypeConfig) mime).getSchema());
     }
     return properties;
   }

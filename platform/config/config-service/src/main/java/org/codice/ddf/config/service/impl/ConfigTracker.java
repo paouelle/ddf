@@ -42,52 +42,55 @@ class ConfigTracker {
 
   @Nullable
   public synchronized ConfigEvent install(String filename, Set<Config> configs) {
-    LOGGER.error("##### Start ConfigServiceImpl::install");
-    LOGGER.error("##### Received configs: {}", configs);
-    fileToConfig.put(filename, configs);
+    LOGGER.debug("ConfigTracker:install({}, {})", filename, configs);
     updatePrevious();
+    fileToConfig.put(filename, configs);
     configs.forEach(this::updateCurrent);
-    LOGGER.error("##### End ConfigServiceImpl::install");
-    return diff();
+    final ConfigEvent event = diff();
+
+    LOGGER.debug("ConfigTracker:install({}, {}) = {}", filename, configs, event);
+    return event;
   }
 
   @Nullable
   public synchronized ConfigEvent update(String filename, Set<Config> configs) {
-    LOGGER.error("##### Start ConfigServiceImpl::update");
-    LOGGER.error("##### Received configs: {}", configs);
+    LOGGER.debug("ConfigTracker:update({}, {})", filename, configs);
     updatePrevious();
-    processRemoval(filename);
+    final Set<Config> old = fileToConfig.put(filename, configs);
+
+    if (old != null) {
+      old.stream().map(ConfigTracker::toKey).forEach(current::remove);
+    }
     configs.forEach(this::updateCurrent);
-    LOGGER.error("##### End ConfigServiceImpl::update");
-    return diff();
+    final ConfigEvent event = diff();
+
+    LOGGER.debug("ConfigTracker:update({}, {}) = {}", filename, configs, event);
+    return event;
   }
 
   @Nullable
   public synchronized ConfigEvent remove(String filename) {
-    LOGGER.error("##### Start ConfigServiceImpl::remove");
+    LOGGER.debug("ConfigTracker:remove({})", filename);
     updatePrevious();
-    final Set<Config> configs = processRemoval(filename);
-
-    LOGGER.error("##### End ConfigServiceImpl::remove");
-    if (configs == null) {
-      return null;
-    }
-    return new ConfigEventImpl(Collections.emptySet(), Collections.emptySet(), configs);
-  }
-
-  @Nullable
-  private Set<Config> processRemoval(String filename) {
     Set<Config> configs = fileToConfig.remove(filename);
 
     if (configs != null) {
       configs.stream().map(ConfigTracker::toKey).forEach(current::remove);
     }
-    return configs;
+    if (configs == null) {
+      LOGGER.debug("ConfigTracker:remove({}) = null", filename);
+      return null;
+    }
+    final ConfigEvent event =
+        new ConfigEventImpl(Collections.emptySet(), Collections.emptySet(), configs);
+
+    LOGGER.debug("ConfigTracker:remove({}) = {}", filename, event);
+    return event;
   }
 
   @Nullable
   private ConfigEvent diff() {
-    LOGGER.error("##### Start ConfigServiceImpl::diff");
+    LOGGER.debug("ConfigTracker:diff()");
     MapDifference<String, Config> diff = Maps.difference(previous, current);
 
     Map<String, MapDifference.ValueDifference<Config>> entriesDiffering = diff.entriesDiffering();
@@ -99,19 +102,21 @@ class ConfigTracker {
 
     Map<String, Config> entriesOnlyOnLeft = diff.entriesOnlyOnLeft();
     Set<Config> removedConfigs = entriesOnlyOnLeft.values().stream().collect(Collectors.toSet());
+    final ConfigEvent event;
 
-    LOGGER.error("##### End ConfigServiceImpl::diff");
     if (addedConfigs.isEmpty() && updatedConfigs.isEmpty() && removedConfigs.isEmpty()) {
-      return null;
+      event = null;
+    } else {
+      event = new ConfigEventImpl(addedConfigs, updatedConfigs, removedConfigs);
     }
-    return new ConfigEventImpl(addedConfigs, updatedConfigs, removedConfigs);
+    LOGGER.debug("ConfigTracker:diff() = {}", event);
+    return event;
   }
 
   private void updatePrevious() {
-    LOGGER.error("##### Start ConfigServiceImpl::updatePrevious()");
+    LOGGER.debug("ConfigTracker:updatePrevious()");
     this.previous.clear();
     this.previous.putAll(this.current);
-    LOGGER.error("##### End ConfigServiceImpl::updatePrevious()");
   }
 
   private void updateCurrent(Config c) {
@@ -128,17 +133,29 @@ class ConfigTracker {
   }
 
   public <T extends ConfigSingleton> Optional<T> get(Class<T> type) {
-    LOGGER.error("##### ConfigServiceImpl::get(type)");
-    return current.values().stream().filter(type::isInstance).map(type::cast).findFirst();
+    LOGGER.debug("ConfigTracker:get({})", type);
+    final Optional<T> cfg =
+        current.values().stream().filter(type::isInstance).map(type::cast).findFirst();
+
+    LOGGER.debug("ConfigTracker:get({}) = {}", type, cfg);
+    return cfg;
   }
 
   public <T extends ConfigGroup> Optional<T> get(Class<T> type, String id) {
-    LOGGER.error("##### ConfigServiceImpl::get(type, id)");
-    return configs(type).filter(c -> c.getId().equals(id)).findFirst();
+    LOGGER.debug("ConfigTracker:get({}, {})", type, id);
+    final Optional<T> cfg = configs(type).filter(c -> c.getId().equals(id)).findFirst();
+
+    LOGGER.debug("ConfigTracker:get({}, {}) = {}", type, id, cfg);
+    return cfg;
   }
 
   public <T extends ConfigGroup> Stream<T> configs(Class<T> type) {
-    LOGGER.error("##### ConfigServiceImpl::configs(type)");
-    return current.values().stream().filter(type::isInstance).map(type::cast);
+    LOGGER.debug("ConfigTracker:configs({})", type);
+    return current
+        .values()
+        .stream()
+        .filter(type::isInstance)
+        .map(type::cast)
+        .peek(cfg -> LOGGER.debug("ConfigTracker:configs({}) + {}", type, cfg));
   }
 }
