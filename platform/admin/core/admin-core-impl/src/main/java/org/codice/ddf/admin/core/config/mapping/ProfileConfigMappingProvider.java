@@ -61,10 +61,10 @@ public class ProfileConfigMappingProvider implements ConfigMappingProvider {
       this.profiles = (Map<String, Object>) Boon.fromJson(json);
       LOGGER.debug("profiles: {}", this.profiles);
       processProfileConfigSections();
-      LOGGER.error("configs: {}", configs);
-      LOGGER.error("pids: {}", pids);
+      LOGGER.debug("configs: {}", configs);
+      LOGGER.debug("pids: {}", pids);
     } catch (IOException e) {
-      LOGGER.error(
+      LOGGER.debug(
           "Could not find {} during installation. Using default profile.", profilesFilePath, e);
       this.profiles = Collections.EMPTY_MAP;
     }
