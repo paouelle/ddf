@@ -152,6 +152,17 @@
                                     </outputDirectory>
                                     <destFileName>platform-osgi-condpermadmin-${project.version}.jar</destFileName>
                                 </artifactItem>
+                                <artifactItem>
+                                    <groupId>ddf.config</groupId>
+                                    <artifactId>config-external-agent</artifactId>
+                                    <version>${project.version}</version>
+                                    <outputDirectory>
+                                        ${setup.folder}/system/ddf/config/config-external-agent/${project.version}
+                                    </outputDirectory>
+                                    <destFileName>
+                                        config-external-agent-${project.version}.jar
+                                    </destFileName>
+                                </artifactItem>
                             </artifactItems>
                         </configuration>
                     </execution>
@@ -282,6 +293,11 @@
         <dependency>
             <groupId>ddf.platform.osgi</groupId>
             <artifactId>platform-osgi-condpermadmin</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ddf.config</groupId>
+            <artifactId>config-external-agent</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

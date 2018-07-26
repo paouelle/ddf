@@ -6,6 +6,22 @@ while true; do
   # Remove the restart file indicator so we can detect later if restart was requested
   rm -f "${SCRIPTDIR}/restart.jvm"
 
+  # make sure log directory exist
+  KARAF_DATA="${SCRIPTDIR}/../data"
+  if [ ! -d "${KARAF_DATA}/log" ]; then
+    mkdir -p "${KARAF_DATA}/log"
+  fi
+
+  # Start by processing external config first
+  echo "Processing initial configuration..."
+  "${SCRIPTDIR}/agent" >> "${KARAF_DATA}/log/agent.log"
+  RC=$?
+  echo ""
+  if [ "$RC" -ne 0 ]; then
+      echo "Failed to process initial configurations"
+      exit $RC
+  fi
+
   # Argument to Karaf is optional.
   # Provides ability to start Karaf in different modes, e.g., server, client, etc.
   "${SCRIPTDIR}/karaf" "$@"

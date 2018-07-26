@@ -25,6 +25,9 @@ import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.filefilter.TrueFileFilter;
+import org.apache.commons.io.filefilter.WildcardFileFilter;
 import org.apache.felix.fileinstall.ArtifactInstaller;
 import org.codice.ddf.config.Config;
 import org.codice.ddf.config.ConfigEvent;
@@ -60,6 +63,14 @@ public class ConfigServiceImpl implements ConfigService, ArtifactInstaller {
     this.paths = paths.stream().map(File::new).map(File::toPath).collect(Collectors.toSet());
   }
 
+  /**
+   * Useful method to preload all files found in the configured paths. This method doesn't need to
+   * be called when registered as an OSGI ArtifactInstaller service.
+   */
+  public void init() {
+    paths.stream().map(Path::toFile).flatMap(ConfigServiceImpl::listFiles).forEach(this::install);
+  }
+
   @Override
   public <T extends ConfigSingleton> Optional<T> get(Class<T> clazz) {
     LOGGER.error("##### ConfigServiceImpl::get({})", clazz);
@@ -79,7 +90,7 @@ public class ConfigServiceImpl implements ConfigService, ArtifactInstaller {
   }
 
   @Override
-  public void install(File config) throws Exception {
+  public void install(File config) {
     LOGGER.error("##### Start ConfigServiceImpl::install");
     Set<Config> configs = read(config);
     ConfigEvent configEvent = configTracker.install(config.getName(), configs);
@@ -88,7 +99,7 @@ public class ConfigServiceImpl implements ConfigService, ArtifactInstaller {
   }
 
   @Override
-  public void update(File config) throws Exception {
+  public void update(File config) {
     LOGGER.error("##### Start ConfigServiceImpl::update");
     Set<Config> configs = read(config);
     ConfigEvent configEvent = configTracker.update(config.getName(), configs);
@@ -97,7 +108,7 @@ public class ConfigServiceImpl implements ConfigService, ArtifactInstaller {
   }
 
   @Override
-  public void uninstall(File config) throws Exception {
+  public void uninstall(File config) {
     LOGGER.error("##### Start ConfigServiceImpl::uninstall");
     ConfigEvent configEvent = configTracker.remove(config.getName());
     configChanged(configEvent);
@@ -136,5 +147,11 @@ public class ConfigServiceImpl implements ConfigService, ArtifactInstaller {
     return Executors.newFixedThreadPool(
         ConfigServiceImpl.THREAD_POOL_DEFAULT_SIZE,
         StandardThreadFactoryBuilder.newThreadFactory("ConfigService"));
+  }
+
+  private static Stream<File> listFiles(File path) {
+    return FileUtils.listFiles(
+            path, new WildcardFileFilter(new String[] {"*.yml", "*.yaml"}), TrueFileFilter.INSTANCE)
+        .stream();
   }
 }

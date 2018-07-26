@@ -1,0 +1,11 @@
+{
+    "providers": [
+        "org.codice.ddf.config.external.TempProvider"
+    ],
+    "files": {
+        "etc/users.attributes": [
+            "JSON",
+            true
+        ]
+    }
+}

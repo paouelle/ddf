@@ -42,6 +42,13 @@
                 </include>
             </includes>
         </dependencySet>
+        <dependencySet>
+            <outputDirectory>system/ddf/config/config-external-agent/${project.version}
+            </outputDirectory>
+            <includes>
+                <include>ddf.config:config-external-agent:jar:${project.version}</include>
+            </includes>
+        </dependencySet>
     </dependencySets>
 
 </assembly>

@@ -1,0 +1,234 @@
+#!/bin/sh
+
+realpath() {
+  READLINK_EXISTS=$(command -v readlink &> /dev/null)
+  if [ -z $READLINK_EXISTS ]; then
+    OURPWD=${PWD}
+    cd "$(dirname "${1}")" || exit 2
+    LINK=$(ls -l "$(basename "${1}")" | awk -F"-> " '{print $2}')
+    while [ "${LINK}" ]; do
+        echo "link: ${LINK}" >&2
+        cd "$(dirname "${LINK}")" || exit 2
+        LINK=$(ls -l "$(basename "${1}")" | awk -F"-> " '{print $2}')
+    done
+    REALPATH="${PWD}/$(basename "${1}")"
+    cd "${OURPWD}" || exit 2
+    echo "${REALPATH}"
+  else
+    OURPWD=${PWD}
+    cd "$(dirname "${1}")" || exit 2
+    LINK=$(readlink "$(basename "${1}")")
+    while [ "${LINK}" ]; do
+	    echo "link: ${LINK}" >&2
+        cd "$(dirname "${LINK}")" || exit 2
+        LINK=$(readlink "$(basename "${1}")")
+    done
+    REALPATH="${PWD}/$(basename "${1}")"
+    cd "${OURPWD}" || exit 2
+    echo "${REALPATH}"
+  fi
+}
+
+REALNAME=$(realpath "$0")
+DIRNAME=$(dirname "${REALNAME}")
+PROGNAME=$(basename "${REALNAME}")
+
+#
+# Load common functions
+#
+. "${DIRNAME}/inc"
+
+#
+# Sourcing environment settings for karaf similar to tomcats setenv
+#
+AGENT_SCRIPT="${PROGNAME}"
+export AGENT_SCRIPT
+if [ -f "${DIRNAME}/setenv" ]; then
+  . "${DIRNAME}/setenv"
+fi
+
+setupClassPath() {
+    # Add the jars in the lib dir
+    for file in "${KARAF_HOME}"/lib/boot/*.jar
+    do
+        if [ -z "${CLASSPATH}" ]; then
+            CLASSPATH="${file}"
+        else
+            CLASSPATH="${CLASSPATH}:${file}"
+        fi
+    done
+    for file in $(find "${KARAF_HOME}"/system -name '*.jar')
+    do
+        if [ -z "${CLASSPATH}" ]; then
+            CLASSPATH="${file}"
+        else
+            CLASSPATH="${CLASSPATH}:${file}"
+        fi
+    done
+}
+
+init() {
+    # Determine if there is special OS handling we must perform
+    detectOS
+
+    # Unlimit the number of file descriptors if possible
+    unlimitFD
+
+    # Locate the Karaf home directory
+    locateHome
+
+    # Locate the Karaf base directory
+    locateBase
+
+    # Locate the Karaf data directory
+    locateData
+
+    # Locate the Karaf etc directory
+    locateEtc
+
+    # Setup the native library path
+    setupNativePath
+
+    # Locate the Java VM to execute
+    locateJava
+
+    # Determine the JVM vendor
+    detectJVM
+
+    # Determine the JVM version >= 1.6
+    checkJvmVersion
+
+    # Setup default options
+    setupDefaults
+
+    # Setup classpath
+    setupClassPath
+
+    # Install debug options
+    setupDebugOptions
+
+}
+
+run() {
+    OPTS=""
+    MAIN=org.codice.ddf.config.external.ConfigExternalAgent
+    JAVA_ENDORSED_DIRS="${JAVA_HOME}/jre/lib/endorsed:${JAVA_HOME}/lib/endorsed:${KARAF_HOME}/lib/endorsed"
+    JAVA_EXT_DIRS="${JAVA_HOME}/jre/lib/ext:${JAVA_HOME}/lib/ext:${KARAF_HOME}/lib/ext"
+    if ${cygwin}; then
+        JAVA_HOME=$(cygpath --path --windows "${JAVA_HOME}")
+        JAVA_ENDORSED_DIRS=$(cygpath --path --windows "${JAVA_ENDORSED_DIRS}")
+        JAVA_EXT_DIRS=$(cygpath --path --windows "${JAVA_EXT_DIRS}")
+    fi
+    convertPaths
+    cd "${KARAF_BASE}" || exit 2
+
+    if [ -z "${KARAF_EXEC}" ]; then
+        KARAF_EXEC=""
+    fi
+
+    debug=false
+    nodebug=false
+    while [ "${1}" != "" ]; do
+        case "${1}" in
+            'debug')
+                debug=true
+                shift
+                ;;
+            'classpath')
+                echo "Classpath: ${CLASSPATH}"
+                shift
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    if ${nodebug}; then
+        debug=false
+    fi
+    if ${debug}; then
+        if [ "x${JAVA_DEBUG_OPTS}" = "x" ]; then
+            JAVA_DEBUG_OPTS="${DEFAULT_JAVA_DEBUG_OPTS}"
+        fi
+        JAVA_OPTS="${JAVA_DEBUG_OPTS} ${JAVA_OPTS}"
+    fi
+
+    while true; do
+        # Ensure the log directory exists
+        # We may need to have a place to redirect stdout/stderr
+        if [ ! -d "${KARAF_DATA}/log" ]; then
+            mkdir -p "${KARAF_DATA}/log"
+        fi
+        if [ ! -d "${KARAF_DATA}/tmp" ]; then
+            mkdir -p "${KARAF_DATA}/tmp"
+        fi
+
+        if [ "${VERSION}" -gt "80" ]; then
+            ${KARAF_EXEC} "${JAVA}" ${JAVA_OPTS} \
+                --add-opens java.base/java.security=ALL-UNNAMED \
+                --add-opens java.base/java.net=ALL-UNNAMED \
+                --add-opens java.base/java.lang=ALL-UNNAMED \
+                --add-opens java.base/java.util=ALL-UNNAMED \
+                --add-exports=java.base/sun.net.www.protocol.http=ALL-UNNAMED \
+                --add-exports=java.base/sun.net.www.protocol.https=ALL-UNNAMED \
+                --add-exports=java.base/sun.net.www.protocol.jar=ALL-UNNAMED \
+                --add-exports=java.xml.bind/com.sun.xml.internal.bind.v2.runtime=ALL-UNNAMED \
+                --add-exports=jdk.xml.dom/org.w3c.dom.html=ALL-UNNAMED \
+                --add-exports=jdk.naming.rmi/com.sun.jndi.url.rmi=ALL-UNNAMED \
+                --add-modules java.xml.ws.annotation,java.corba,java.transaction,java.xml.bind,java.xml.ws \
+                -Dkaraf.home="${KARAF_HOME}" \
+                -Dkaraf.base="${KARAF_BASE}" \
+                -Dkaraf.data="${KARAF_DATA}" \
+                -Dkaraf.etc="${KARAF_ETC}" \
+                -Djava.io.tmpdir="${KARAF_DATA}/tmp" \
+                ${KARAF_SYSTEM_OPTS} \
+                 ${KARAF_OPTS} \
+                ${OPTS} \
+                -classpath "${CLASSPATH}" \
+                ${MAIN} "$@"
+
+#                -Djava.util.logging.config.file="${KARAF_BASE}/etc/java.util.logging.properties" \
+        else
+            ${KARAF_EXEC} "${JAVA}" ${JAVA_OPTS} \
+                -Djava.endorsed.dirs="${JAVA_ENDORSED_DIRS}" \
+                -Djava.ext.dirs="${JAVA_EXT_DIRS}" \
+                -Dkaraf.instances="${KARAF_HOME}/instances" \
+                -Dkaraf.home="${KARAF_HOME}" \
+                -Dkaraf.base="${KARAF_BASE}" \
+                -Dkaraf.data="${KARAF_DATA}" \
+                -Dkaraf.etc="${KARAF_ETC}" \
+                -Djava.io.tmpdir="${KARAF_DATA}/tmp" \
+                ${KARAF_SYSTEM_OPTS} \
+                ${KARAF_OPTS} \
+                ${OPTS} \
+                -classpath "${CLASSPATH}" \
+                ${MAIN} "$@"
+
+#                -Djava.util.logging.config.file="${KARAF_BASE}/etc/java.util.logging.properties" \
+        fi
+        KARAF_RC=$?
+        if [ ${KARAF_DAEMON} ] ; then
+            exit ${KARAF_RC}
+        else
+            if [ "${KARAF_RC}" -eq 10 ]; then
+               echo "Restarting JVM..."
+            else
+               exit ${KARAF_RC}
+            fi
+        fi
+    done
+}
+
+nothing() {
+   # nothing to do here
+   a=a
+}
+
+main() {
+    init
+    trap 'nothing' TSTP
+    run "$@"
+}
+
+main "$@"

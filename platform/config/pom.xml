@@ -37,6 +37,7 @@
         <module>config-reader-yaml</module>
         <module>config-model-impl</module>
         <module>config-service</module>
+        <module>config-external-agent</module>
     </modules>
 
     <build>
