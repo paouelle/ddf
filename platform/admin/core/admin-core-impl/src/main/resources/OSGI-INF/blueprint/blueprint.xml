@@ -74,4 +74,11 @@
     <reference-list id="moduleList" interface="org.codice.ddf.ui.admin.api.module.AdminModule"
                     availability="optional"/>
 
+    <bean id="profileConfigMappingProviderBean" class="org.codice.ddf.admin.core.config.mapping.ProfileConfigMappingProvider" init-method="init">
+        <argument value="${ddf.home}/etc/ws-security/profiles.json"/>
+    </bean>
+
+    <!-- Ranking must be higher than the default mapper -->
+    <service ref="profileConfigMappingProviderBean" interface="org.codice.ddf.config.mapping.ConfigMappingProvider" ranking="100"/>
+
 </blueprint>

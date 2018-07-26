@@ -16,6 +16,7 @@ package org.codice.ddf.config;
 import java.io.File;
 import java.net.URL;
 import java.util.Set;
+import org.codice.ddf.config.model.NetworkProfileConfig;
 import org.codice.ddf.config.model.impl.RegistryConfigImpl;
 import org.codice.ddf.config.reader.impl.YamlConfigReaderImpl;
 import org.junit.Test;
@@ -39,6 +40,19 @@ public class YamlConfigReaderTest {
     System.out.println(configs);
     for (Config c : configs) {
       System.out.println("class: " + c.getClass());
+    }
+  }
+
+  @Test
+  public void networkProfileTest() throws Exception {
+    YamlConfigReaderImpl yc = new YamlConfigReaderImpl();
+    File config = new File(getClass().getClassLoader().getResource("networkProfile.yml").getFile());
+    Set<Config> configs = yc.read(config);
+    System.out.println("configs: " + configs);
+    for (Config c : configs) {
+      System.out.println("class: " + c.getClass());
+      System.out.println(((NetworkProfileConfig) c).getProfile());
+      System.out.println(((NetworkProfileConfig) c).getVersion());
     }
   }
 }
