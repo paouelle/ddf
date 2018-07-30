@@ -16,7 +16,8 @@ package org.codice.ddf.config.model.impl;
 import java.util.Objects;
 import org.codice.ddf.config.model.NetworkProfileConfig;
 
-public class NetworkProfileConfigImpl extends AbstractConfig implements NetworkProfileConfig {
+public class NetworkProfileConfigImpl extends AbstractConfigSingleton
+    implements NetworkProfileConfig {
 
   private String profile;
 
@@ -30,11 +31,6 @@ public class NetworkProfileConfigImpl extends AbstractConfig implements NetworkP
   }
 
   @Override
-  public String getVersion() {
-    return super.getVersion();
-  }
-
-  @Override
   public int hashCode() {
     return 31 * super.hashCode() + Objects.hash(profile);
   }
@@ -45,7 +41,7 @@ public class NetworkProfileConfigImpl extends AbstractConfig implements NetworkP
       return true;
     } else if (obj instanceof NetworkProfileConfigImpl) {
       final NetworkProfileConfigImpl cfg = (NetworkProfileConfigImpl) obj;
-      return profile.equals(cfg.profile) && super.equals(obj);
+      return Objects.equals(profile, cfg.profile) && super.equals(obj);
     } else {
       return false;
     }

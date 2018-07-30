@@ -18,7 +18,5 @@ import org.codice.ddf.config.ConfigGroup;
 
 public interface SourceConfig extends ConfigGroup {
 
-  String getName();
-
   URL getUrl();
 }

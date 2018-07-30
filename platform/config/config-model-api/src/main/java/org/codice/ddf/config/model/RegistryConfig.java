@@ -24,8 +24,6 @@ public interface RegistryConfig extends ConfigGroup {
     return RegistryConfig.class;
   }
 
-  String getName();
-
   URL getUrl();
 
   boolean getPush();

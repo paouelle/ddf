@@ -20,6 +20,12 @@ public abstract class AbstractConfig implements Config {
 
   private String version;
 
+  public AbstractConfig() {}
+
+  public AbstractConfig(String version) {
+    this.version = version;
+  }
+
   @Override
   public String getVersion() {
     return version;
@@ -31,7 +37,7 @@ public abstract class AbstractConfig implements Config {
 
   @Override
   public int hashCode() {
-    return 31 * +Objects.hash(version);
+    return Objects.hash(version);
   }
 
   @Override
@@ -40,7 +46,7 @@ public abstract class AbstractConfig implements Config {
       return true;
     } else if (obj instanceof AbstractConfig) {
       final AbstractConfig cfg = (AbstractConfig) obj;
-      return cfg.getVersion().equals(version);
+      return Objects.equals(version, cfg.version);
     } else {
       return false;
     }

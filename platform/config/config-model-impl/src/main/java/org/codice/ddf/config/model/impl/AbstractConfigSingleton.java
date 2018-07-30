@@ -13,44 +13,33 @@
  */
 package org.codice.ddf.config.model.impl;
 
-import java.net.URL;
-import java.util.Objects;
-import org.codice.ddf.config.model.SourceConfig;
+import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.lang3.builder.ToStringStyle;
+import org.codice.ddf.config.ConfigSingleton;
 
-public abstract class SourceConfigImpl extends AbstractConfigGroup implements SourceConfig {
-
-  private URL url;
-
-  public SourceConfigImpl() {}
-
-  public SourceConfigImpl(String id, URL url, String version) {
-    super(id, version);
-    this.url = url;
-  }
-
-  @Override
-  public URL getUrl() {
-    return url;
-  }
-
-  public void setUrl(URL url) {
-    this.url = url;
-  }
+public abstract class AbstractConfigSingleton extends AbstractConfig implements ConfigSingleton {
 
   @Override
   public int hashCode() {
-    return 31 * super.hashCode() + Objects.hash(url);
+    return 31 * super.hashCode();
   }
 
   @Override
   public boolean equals(Object obj) {
     if (obj == this) {
       return true;
-    } else if (obj instanceof SourceConfigImpl) {
-      final SourceConfigImpl cfg = (SourceConfigImpl) obj;
-
-      return Objects.equals(url, cfg.url) && super.equals(obj);
+    } else if (obj instanceof AbstractConfigSingleton) {
+      final AbstractConfigSingleton cfg = (AbstractConfigSingleton) obj;
+      return super.equals(obj);
+    } else {
+      return false;
     }
-    return false;
+  }
+
+  @Override
+  public String toString() {
+    // Temporary while prototyping
+    return ToStringBuilder.reflectionToString(
+        this, ToStringStyle.DEFAULT_STYLE, false, AbstractConfigSingleton.class);
   }
 }

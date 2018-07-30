@@ -19,6 +19,7 @@ import org.codice.ddf.config.ConfigService;
 import org.codice.ddf.config.mapping.ConfigMapping;
 import org.codice.ddf.config.mapping.ConfigMappingException;
 import org.codice.ddf.config.mapping.ConfigMappingProvider;
+import org.codice.ddf.configuration.PlatformUiConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,26 +27,12 @@ import org.slf4j.LoggerFactory;
  * NOTE: This is an example of a Config Mapping Provider that only provides default values. These
  * values will be overridden by upstream projects.
  */
-public class PlatformConfigurationConfigMappingProvider implements ConfigMappingProvider {
+public class DefaultPlatformConfigurationConfigMappingProvider implements ConfigMappingProvider {
 
   private static final Logger LOGGER =
-      LoggerFactory.getLogger(PlatformConfigurationConfigMappingProvider.class);
-
-  private static final String BACKGROUND = "background";
-
-  private static final String COLOR = "color";
-
-  private static final String FOOTER = "footer";
-
-  private static final String HEADER = "header";
+      LoggerFactory.getLogger(DefaultPlatformConfigurationConfigMappingProvider.class);
 
   private static final String SYS_USAGE_ENABLED = "systemUsageEnabled";
-
-  private static final String SYS_USAGE_MESSAGE = "systemUsageMessage";
-
-  private static final String SYS_USAGE_ONCE_PER_SESSION = "systemUsageOncePerSession";
-
-  private static final String SYS_USAGE_TITLE = "systemUsageTitle";
 
   private static final String DEFAULT_BACKGROUND_COLOR = "GREEN";
 
@@ -84,14 +71,17 @@ public class PlatformConfigurationConfigMappingProvider implements ConfigMapping
   public Map<String, Object> provide(ConfigMapping.Id id, ConfigService configService)
       throws ConfigMappingException {
     final Map<String, Object> properties = new HashMap<>();
-    properties.put(BACKGROUND, DEFAULT_BACKGROUND_COLOR);
-    properties.put(COLOR, DEFAULT_COLOR);
-    properties.put(FOOTER, DEFAULT_FOOTER);
-    properties.put(HEADER, DEFAULT_HEADER);
+    properties.put(PlatformUiConfiguration.BACKGROUND_CONFIG_KEY, DEFAULT_BACKGROUND_COLOR);
+    properties.put(PlatformUiConfiguration.COLOR_CONFIG_KEY, DEFAULT_COLOR);
+    properties.put(PlatformUiConfiguration.FOOTER_CONFIG_KEY, DEFAULT_FOOTER);
+    properties.put(PlatformUiConfiguration.HEADER_CONFIG_KEY, DEFAULT_HEADER);
     properties.put(SYS_USAGE_ENABLED, DEFAULT_SYS_USAGE_ENABLED);
-    properties.put(SYS_USAGE_MESSAGE, DEFAULT_SYS_USAGE_MESSAGE);
-    properties.put(SYS_USAGE_ONCE_PER_SESSION, DEFAULT_USAGE_ONCE_PER_SESSION);
-    properties.put(SYS_USAGE_TITLE, DEFAULT_SYS_USAGE_TITLE);
+    properties.put(
+        PlatformUiConfiguration.SYSTEM_USAGE_MESSAGE_CONFIG_KEY, DEFAULT_SYS_USAGE_MESSAGE);
+    properties.put(
+        PlatformUiConfiguration.SYSTEM_USAGE_ONCE_PER_SESSION_CONFIG_KEY,
+        DEFAULT_USAGE_ONCE_PER_SESSION);
+    properties.put(PlatformUiConfiguration.SYSTEM_USAGE_TITLE_CONFIG_KEY, DEFAULT_SYS_USAGE_TITLE);
     return properties;
   }
 }

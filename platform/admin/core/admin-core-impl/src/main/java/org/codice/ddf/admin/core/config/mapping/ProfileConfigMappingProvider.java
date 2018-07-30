@@ -129,15 +129,13 @@ public class ProfileConfigMappingProvider implements ConfigMappingProvider {
     final List<ConfigEntry> configEntries =
         profileConfigs.stream().map(ConfigEntry::new).collect(Collectors.toList());
     configs.put(profile, configEntries);
-    Set<String> pidsSet =
+    this.pids.addAll(
         configs
-            .entrySet()
+            .values()
             .stream()
-            .map(e -> e.getValue())
             .flatMap(Collection::stream)
-            .map(c -> c.getPid())
-            .collect(Collectors.toSet());
-    this.pids.addAll(pidsSet);
+            .map(ConfigEntry::getPid)
+            .collect(Collectors.toSet()));
   }
 
   private List<Map<String, Object>> getConfigsFromProfileEntry(

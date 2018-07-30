@@ -13,46 +13,28 @@
  */
 package org.codice.ddf.config;
 
+import static org.junit.Assert.assertEquals;
+
 import java.io.File;
-import java.net.URL;
 import java.util.Set;
 import org.codice.ddf.config.model.NetworkProfileConfig;
-import org.codice.ddf.config.model.impl.RegistryConfigImpl;
 import org.codice.ddf.config.reader.impl.YamlConfigReaderImpl;
 import org.junit.Test;
 
 public class YamlConfigReaderTest {
 
   @Test
-  public void test12() throws Exception {
-    RegistryConfigImpl rc = new RegistryConfigImpl();
-    rc.setName("my_reg");
-    rc.setId("abc");
-    rc.setPublish(true);
-    rc.setPull(true);
-    rc.setPush(true);
-    rc.setUrl(new URL("http://localhost:8993/registry"));
-    rc.setVersion("456");
-    System.out.println("Id: " + rc.getId());
-    YamlConfigReaderImpl yc = new YamlConfigReaderImpl();
-    File config = new File(getClass().getClassLoader().getResource("proxy.yml").getFile());
-    Set<Config> configs = yc.read(config);
-    System.out.println(configs);
-    for (Config c : configs) {
-      System.out.println("class: " + c.getClass());
-    }
-  }
-
-  @Test
-  public void networkProfileTest() throws Exception {
+  public void testNetworkProfile() throws Exception {
     YamlConfigReaderImpl yc = new YamlConfigReaderImpl();
     File config = new File(getClass().getClassLoader().getResource("networkProfile.yml").getFile());
     Set<Config> configs = yc.read(config);
     System.out.println("configs: " + configs);
+    assertEquals(1, configs.size());
     for (Config c : configs) {
       System.out.println("class: " + c.getClass());
       System.out.println(((NetworkProfileConfig) c).getProfile());
       System.out.println(((NetworkProfileConfig) c).getVersion());
+      System.out.println("hash code: " + c.hashCode());
     }
   }
 }
