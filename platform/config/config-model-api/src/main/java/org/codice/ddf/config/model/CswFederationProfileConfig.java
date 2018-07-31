@@ -14,10 +14,4 @@
 package org.codice.ddf.config.model;
 
 // @ConfigType
-public interface CswFederationProfileConfig extends SourceConfig {
-
-  @Override
-  default Class<CswFederationProfileConfig> getType() {
-    return CswFederationProfileConfig.class;
-  }
-}
+public interface CswFederationProfileConfig extends SourceConfig {}

@@ -21,4 +21,9 @@ import org.codice.ddf.config.ConfigType;
 public interface SourceConfig extends ConfigGroup {
 
   URL getUrl();
+
+  @Override
+  default Class<SourceConfig> getType() {
+    return SourceConfig.class;
+  }
 }
