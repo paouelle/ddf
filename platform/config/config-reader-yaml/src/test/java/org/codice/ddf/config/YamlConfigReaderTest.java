@@ -17,6 +17,8 @@ import static org.junit.Assert.assertEquals;
 
 import java.io.File;
 import java.util.Set;
+import java.util.stream.Collectors;
+import org.codice.ddf.config.model.ConfluenceSourceConfig;
 import org.codice.ddf.config.model.NetworkProfileConfig;
 import org.codice.ddf.config.reader.impl.YamlConfigReaderImpl;
 import org.junit.Test;
@@ -39,13 +41,24 @@ public class YamlConfigReaderTest {
   }
 
   @Test
-  public void test13() throws Exception {
+  public void testConfluenceSource() throws Exception {
     YamlConfigReaderImpl yc = new YamlConfigReaderImpl();
-    File config = new File(getClass().getClassLoader().getResource("sources.yaml").getFile());
+    File config =
+        new File(getClass().getClassLoader().getResource("confluence-sources.yaml").getFile());
     Set<Config> configs = yc.read(config);
-    System.out.println(configs);
+    System.out.println("configs: " + configs);
+    assertEquals(1, configs.size());
     for (Config c : configs) {
-      System.out.println(c);
+      System.out.println("class: " + c.getClass());
+      System.out.println(((ConfluenceSourceConfig) c).getId());
+      System.out.println(((ConfluenceSourceConfig) c).getUrl());
+      System.out.println(((ConfluenceSourceConfig) c).getUsername());
+      System.out.println(((ConfluenceSourceConfig) c).getPassword());
+      System.out.println(
+          ((ConfluenceSourceConfig) c).excludedSpaces().collect(Collectors.toList()));
+      System.out.println(
+          ((ConfluenceSourceConfig) c).attributeOverrides().collect(Collectors.toList()));
+      System.out.println("hash code: " + c.hashCode());
     }
   }
 }

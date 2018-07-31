@@ -13,6 +13,7 @@
  */
 package org.codice.ddf.config.model.impl;
 
+import java.net.URL;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -28,6 +29,23 @@ public class ConfluenceSourceConfigImpl extends SourceConfigImpl implements Conf
   private List<String> excludedSpaces = Collections.EMPTY_LIST;
 
   private List<String> attributeOverrides = Collections.EMPTY_LIST;
+
+  public ConfluenceSourceConfigImpl() {}
+
+  public ConfluenceSourceConfigImpl(
+      String id,
+      URL url,
+      String username,
+      String password,
+      List<String> excludedSpaces,
+      List<String> attributeOverrides,
+      String version) {
+    super(id, url, version);
+    this.username = username;
+    this.password = password;
+    this.excludedSpaces = excludedSpaces;
+    this.attributeOverrides = attributeOverrides;
+  }
 
   @Override
   public String getUsername() {
