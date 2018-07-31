@@ -21,8 +21,8 @@ public class CswFederationProfileConfigImpl extends SourceConfigImpl
 
   public CswFederationProfileConfigImpl() {}
 
-  public CswFederationProfileConfigImpl(String id, String name, URL url, String version) {
-    super(id, name, url, version);
+  public CswFederationProfileConfigImpl(String id, URL url, String version) {
+    super(id, url, version);
   }
 
   @Override

@@ -13,22 +13,11 @@
  */
 package org.codice.ddf.config.model;
 
-import java.net.URL;
-import org.codice.ddf.config.ConfigGroup;
+import org.codice.ddf.config.ConfigSingleton;
 import org.codice.ddf.config.ConfigType;
 
 @ConfigType
-public interface RegistryConfig extends ConfigGroup {
-  @Override
-  public default Class<RegistryConfig> getType() {
-    return RegistryConfig.class;
-  }
+public interface NetworkProfileConfig extends ConfigSingleton {
 
-  URL getUrl();
-
-  boolean getPush();
-
-  boolean getPull();
-
-  boolean getPublish();
+  String getProfile();
 }

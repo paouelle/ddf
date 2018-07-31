@@ -18,16 +18,15 @@ import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
 import org.codice.ddf.config.ConfigGroup;
 
-public abstract class AbstractConfigGroup implements ConfigGroup {
-  private String version;
+public abstract class AbstractConfigGroup extends AbstractConfig implements ConfigGroup {
 
   private String id;
 
   public AbstractConfigGroup() {}
 
   public AbstractConfigGroup(String id, String version) {
+    super(version);
     this.id = id;
-    this.version = version;
   }
 
   @Override
@@ -40,17 +39,8 @@ public abstract class AbstractConfigGroup implements ConfigGroup {
   }
 
   @Override
-  public String getVersion() {
-    return version;
-  }
-
-  public void setVersion(String version) {
-    this.version = version;
-  }
-
-  @Override
   public int hashCode() {
-    return Objects.hash(version, id);
+    return 31 * super.hashCode() + Objects.hash(id);
   }
 
   @Override
@@ -60,7 +50,7 @@ public abstract class AbstractConfigGroup implements ConfigGroup {
     } else if (obj instanceof AbstractConfigGroup) {
       final AbstractConfigGroup cfg = (AbstractConfigGroup) obj;
 
-      return Objects.equals(version, cfg.version) && Objects.equals(id, cfg.id);
+      return Objects.equals(id, cfg.id) && super.equals(obj);
     }
     return false;
   }

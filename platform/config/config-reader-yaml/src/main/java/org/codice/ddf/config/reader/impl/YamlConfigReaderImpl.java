@@ -26,6 +26,7 @@ import java.util.stream.StreamSupport;
 import org.codice.ddf.config.Config;
 import org.codice.ddf.config.model.impl.CswFederationProfileConfigImpl;
 import org.codice.ddf.config.model.impl.MimeTypeConfigImpl;
+import org.codice.ddf.config.model.impl.NetworkProfileConfigImpl;
 import org.codice.ddf.config.model.impl.RegistryConfigImpl;
 import org.codice.ddf.config.model.impl.SchemaMimeTypeConfigImpl;
 import org.codice.ddf.config.reader.ConfigReader;
@@ -46,6 +47,7 @@ public class YamlConfigReaderImpl implements ConfigReader {
           .put(RegistryConfigImpl.class, "!registry")
           .put(MimeTypeConfigImpl.class, "!mime")
           .put(SchemaMimeTypeConfigImpl.class, "!schemaMime")
+          .put(NetworkProfileConfigImpl.class, "!networkProfile")
           .build();
 
   private final Constructor constructor =

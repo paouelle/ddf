@@ -78,6 +78,16 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>ddf.config</groupId>
+            <artifactId>config-mapping-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ddf.config</groupId>
+            <artifactId>config-model-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>ddf.platform</groupId>
             <artifactId>branding-registry-impl</artifactId>
             <version>${project.version}</version>

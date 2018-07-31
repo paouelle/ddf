@@ -13,44 +13,42 @@
  */
 package org.codice.ddf.config.model.impl;
 
-import java.net.URL;
 import java.util.Objects;
-import org.codice.ddf.config.model.SourceConfig;
+import org.codice.ddf.config.Config;
 
-public abstract class SourceConfigImpl extends AbstractConfigGroup implements SourceConfig {
+public abstract class AbstractConfig implements Config {
 
-  private URL url;
+  private String version;
 
-  public SourceConfigImpl() {}
+  public AbstractConfig() {}
 
-  public SourceConfigImpl(String id, URL url, String version) {
-    super(id, version);
-    this.url = url;
+  public AbstractConfig(String version) {
+    this.version = version;
   }
 
   @Override
-  public URL getUrl() {
-    return url;
+  public String getVersion() {
+    return version;
   }
 
-  public void setUrl(URL url) {
-    this.url = url;
+  public void setVersion(String version) {
+    this.version = version;
   }
 
   @Override
   public int hashCode() {
-    return 31 * super.hashCode() + Objects.hash(url);
+    return Objects.hash(version);
   }
 
   @Override
   public boolean equals(Object obj) {
     if (obj == this) {
       return true;
-    } else if (obj instanceof SourceConfigImpl) {
-      final SourceConfigImpl cfg = (SourceConfigImpl) obj;
-
-      return Objects.equals(url, cfg.url) && super.equals(obj);
+    } else if (obj instanceof AbstractConfig) {
+      final AbstractConfig cfg = (AbstractConfig) obj;
+      return Objects.equals(version, cfg.version);
+    } else {
+      return false;
     }
-    return false;
   }
 }

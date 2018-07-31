@@ -53,6 +53,11 @@
         <property name="branding" ref="brandingRegistry"/>
     </bean>
 
+    <bean id="defaultPlatformConfigurationConfigMappingProviderBean" class="org.codice.ddf.configuration.config.mapping.DefaultPlatformConfigurationConfigMappingProvider" />
+
+    <!-- Default Config Mapping Providers should have the lowest service ranking -->
+    <service ref="defaultPlatformConfigurationConfigMappingProviderBean" interface="org.codice.ddf.config.mapping.ConfigMappingProvider" ranking="-10000"/>
+
     <jaxrs:server id="platformConfigurationService" address="/platform">
         <jaxrs:serviceBeans>
             <ref component-id="PlatformUiConfiguration"/>
