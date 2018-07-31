@@ -13,5 +13,4 @@
  */
 package org.codice.ddf.config.model;
 
-// @ConfigType
 public interface CswFederationProfileConfig extends SourceConfig {}
