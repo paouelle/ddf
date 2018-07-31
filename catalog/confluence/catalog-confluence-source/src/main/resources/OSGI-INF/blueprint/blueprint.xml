@@ -59,6 +59,10 @@
         </service-properties>
     </service>
 
+    <bean id="confluenceConfigMappingProviderBean" class="org.codice.ddf.confluence.source.config.mapping.ConfluenceConfigMappingProvider" />
+
+    <service ref="confluenceConfigMappingProviderBean" interface="org.codice.ddf.config.mapping.ConfigMappingProvider" />
+
     <cm:managed-service-factory id="org.codice.ddf.confluence.source.ConfluenceSource.id"
                                 factory-pid="Confluence_Federated_Source"
                                 interface="ddf.catalog.source.FederatedSource">

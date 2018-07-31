@@ -13,4 +13,15 @@
  */
 package org.codice.ddf.config.model;
 
-public interface CswFederationProfileConfig extends SourceConfig {}
+import java.util.stream.Stream;
+
+public interface ConfluenceSourceConfig extends SourceConfig {
+
+  String getUsername();
+
+  String getPassword();
+
+  Stream<String> excludedSpaces();
+
+  Stream<String> attributeOverrides();
+}

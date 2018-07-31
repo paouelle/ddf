@@ -15,8 +15,15 @@ package org.codice.ddf.config.model;
 
 import java.net.URL;
 import org.codice.ddf.config.ConfigGroup;
+import org.codice.ddf.config.ConfigType;
 
+@ConfigType
 public interface SourceConfig extends ConfigGroup {
 
   URL getUrl();
+
+  @Override
+  default Class<SourceConfig> getType() {
+    return SourceConfig.class;
+  }
 }

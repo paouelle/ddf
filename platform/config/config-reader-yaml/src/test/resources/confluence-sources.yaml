@@ -1,0 +1,27 @@
+---
+!confluenceSource
+  id: wiki-123
+  url: https://confluence.abc.net/
+  username: user1
+  password: psssword1
+  excludedSpaces:
+    - testSpace
+  attributeOverrides:
+    - a=b
+    - x=y
+  version: 1.0
+...
+
+---
+!confluenceSource
+  id: wiki-123
+  url: https://confluence.abc.net/
+  username: user1
+  password: psssword1
+  excludedSpaces:
+    - testSpace
+  attributeOverrides:
+    - a=b
+    - x=y
+  version: 1.0
+...
