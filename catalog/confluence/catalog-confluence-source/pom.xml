@@ -127,6 +127,11 @@
         </dependency>
         <dependency>
             <groupId>ddf.config</groupId>
+            <artifactId>config-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ddf.config</groupId>
             <artifactId>config-model-api</artifactId>
             <version>${project.version}</version>
         </dependency>

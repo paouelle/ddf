@@ -17,6 +17,7 @@ import java.net.URL;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.codice.ddf.config.ConfigService;
 import org.codice.ddf.config.mapping.ConfigMapping;
 import org.codice.ddf.config.mapping.ConfigMappingException;
@@ -91,8 +92,14 @@ public class ConfluenceConfigMappingProvider implements ConfigMappingProvider {
   public Map<String, Object> provide(ConfigMapping.Id id, ConfigService configService)
       throws ConfigMappingException {
     final String instanceId = getInstanceId(id);
-    final ConfluenceSourceConfig config = getConfluenceSourceConfig(configService, instanceId);
+    final Optional<ConfluenceSourceConfig> optionalConfluenceSourceConfig =
+        configService.get(ConfluenceSourceConfig.class, instanceId);
 
+    if (!optionalConfluenceSourceConfig.isPresent()) {
+      return Collections.EMPTY_MAP;
+    }
+
+    final ConfluenceSourceConfig config = optionalConfluenceSourceConfig.get();
     final URL url = config.getUrl();
     final String username = config.getUsername();
     final String password = config.getPassword();
@@ -116,26 +123,13 @@ public class ConfluenceConfigMappingProvider implements ConfigMappingProvider {
         properties.toString(),
         instanceId);
 
-    return Collections.unmodifiableMap(properties);
+    return properties;
   }
 
   private String getInstanceId(ConfigMapping.Id id) {
     return id.getInstance()
-        .orElseThrow(() -> new ConfigMappingException("No instance id found in Config Mapping."));
-  }
-
-  private ConfluenceSourceConfig getConfluenceSourceConfig(
-      ConfigService configService, String instanceId) {
-    return configService
-        .get(ConfluenceSourceConfig.class, instanceId)
         .orElseThrow(
-            () ->
-                new ConfigMappingException(
-                    "Unable to find config for ["
-                        + ConfluenceSourceConfig.class
-                        + "] with id ["
-                        + instanceId
-                        + "]."));
+            () -> new ConfigMappingException("No instance found in Config Mapping ID: " + id));
   }
 
   private void setExcludedSpaces(ConfluenceSourceConfig config, Map<String, Object> properties) {
