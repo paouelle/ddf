@@ -11,7 +11,6 @@
  * License is distributed along with this program and can be found at
  * <http://www.gnu.org/licenses/lgpl.html>.
  */
-
 package ddf.ldap.ldaplogin.config.mapping;
 
 import static org.junit.Assert.assertEquals;
@@ -68,10 +67,12 @@ public class LdapLoginConfigMappingProviderTest {
     doReturn(Optional.of(instanceId)).when(mockConfigMappingId).getInstance();
 
     ConfigService mockConfigService = mock(ConfigService.class);
-    doReturn(Optional.of(getMockLdapConfig())).when(mockConfigService).get(LdapConfig.class, instanceId);
+    doReturn(Optional.of(getMockLdapConfig()))
+        .when(mockConfigService)
+        .get(LdapConfig.class, instanceId);
 
-    Map<String, Object> result = ldapLoginConfigMappingProvider
-        .provide(mockConfigMappingId, mockConfigService);
+    Map<String, Object> result =
+        ldapLoginConfigMappingProvider.provide(mockConfigMappingId, mockConfigService);
 
     assertEquals("ldaps://example.com:8181", result.get(LDAP_URL));
     assertEquals(false, result.get(START_TLS_ATTRIBUTE));

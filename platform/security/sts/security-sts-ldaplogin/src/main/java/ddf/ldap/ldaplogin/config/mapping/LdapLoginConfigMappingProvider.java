@@ -18,8 +18,8 @@ import java.util.Map;
 import org.codice.ddf.config.ConfigService;
 import org.codice.ddf.config.mapping.ConfigMapping;
 import org.codice.ddf.config.mapping.ConfigMapping.Id;
-import org.codice.ddf.config.mapping.ConfigMappingException;
 import org.codice.ddf.config.mapping.ConfigMappingProvider;
+import org.codice.ddf.config.mapping.ConfigMappingUnavailableException;
 import org.codice.ddf.config.model.LdapConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -101,7 +101,7 @@ public class LdapLoginConfigMappingProvider implements ConfigMappingProvider {
     return id.getInstance()
         .orElseThrow(
             () ->
-                new ConfigMappingException(
+                new ConfigMappingUnavailableException(
                     String.format("No instance id for %s found in Config Mapping.", id)));
   }
 
@@ -110,7 +110,7 @@ public class LdapLoginConfigMappingProvider implements ConfigMappingProvider {
         .get(LdapConfig.class, instanceId)
         .orElseThrow(
             () ->
-                new ConfigMappingException(
+                new ConfigMappingUnavailableException(
                     "Unable to find config for ["
                         + LdapConfig.class
                         + "] with id ["

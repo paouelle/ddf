@@ -11,7 +11,6 @@
  * License is distributed along with this program and can be found at
  * <http://www.gnu.org/licenses/lgpl.html>.
  */
-
 package ddf.security.sts.claimsHandler.config.mapping;
 
 import static org.junit.Assert.assertEquals;
@@ -29,7 +28,8 @@ import org.junit.Test;
 
 public class LdapClaimsHandlerManagerConfigMappingProviderTest {
 
-  private LdapClaimsHandlerManagerConfigMappingProvider ldapClaimsHandlerManagerConfigMappingProvider;
+  private LdapClaimsHandlerManagerConfigMappingProvider
+      ldapClaimsHandlerManagerConfigMappingProvider;
   private static final String LDAP_CLAIMS_HANDLER_MANAGER_FACTORY_PID = "Claims_Handler_Manager";
 
   // configuration attribute names
@@ -50,11 +50,13 @@ public class LdapClaimsHandlerManagerConfigMappingProviderTest {
 
   // default configuration values
   private static final boolean OVERRIDE_CERT_DN_DEFAULT = false;
-  private static final String PROPERTY_FILE_LOCATION_DEFAULT = "etc/ws-security/attributeMap.properties";
+  private static final String PROPERTY_FILE_LOCATION_DEFAULT =
+      "etc/ws-security/attributeMap.properties";
 
   @Before
   public void setup() {
-    ldapClaimsHandlerManagerConfigMappingProvider = new LdapClaimsHandlerManagerConfigMappingProvider();
+    ldapClaimsHandlerManagerConfigMappingProvider =
+        new LdapClaimsHandlerManagerConfigMappingProvider();
   }
 
   @Test
@@ -77,10 +79,13 @@ public class LdapClaimsHandlerManagerConfigMappingProviderTest {
     doReturn(Optional.of(instanceId)).when(mockConfigMappingId).getInstance();
 
     ConfigService mockConfigService = mock(ConfigService.class);
-    doReturn(Optional.of(getMockLdapConfig())).when(mockConfigService).get(LdapConfig.class, instanceId);
+    doReturn(Optional.of(getMockLdapConfig()))
+        .when(mockConfigService)
+        .get(LdapConfig.class, instanceId);
 
-    Map<String, Object> result = ldapClaimsHandlerManagerConfigMappingProvider
-        .provide(mockConfigMappingId, mockConfigService);
+    Map<String, Object> result =
+        ldapClaimsHandlerManagerConfigMappingProvider.provide(
+            mockConfigMappingId, mockConfigService);
 
     // verify values were popualted
     assertEquals("ldaps://example.com:8181", result.get(LDAP_URL));
@@ -118,4 +123,3 @@ public class LdapClaimsHandlerManagerConfigMappingProviderTest {
     return ldapConfig;
   }
 }
-

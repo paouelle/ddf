@@ -18,8 +18,8 @@ import java.util.Map;
 import org.codice.ddf.config.ConfigService;
 import org.codice.ddf.config.mapping.ConfigMapping;
 import org.codice.ddf.config.mapping.ConfigMapping.Id;
-import org.codice.ddf.config.mapping.ConfigMappingException;
 import org.codice.ddf.config.mapping.ConfigMappingProvider;
+import org.codice.ddf.config.mapping.ConfigMappingUnavailableException;
 import org.codice.ddf.config.model.LdapConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,7 +48,8 @@ public class LdapClaimsHandlerManagerConfigMappingProvider implements ConfigMapp
 
   // default configuration values
   private static final boolean OVERRIDE_CERT_DN_DEFAULT = false;
-  private static final String PROPERTY_FILE_LOCATION_DEFAULT = "etc/ws-security/attributeMap.properties";
+  private static final String PROPERTY_FILE_LOCATION_DEFAULT =
+      "etc/ws-security/attributeMap.properties";
 
   private static final Logger LOGGER =
       LoggerFactory.getLogger(LdapClaimsHandlerManagerConfigMappingProvider.class);
@@ -87,7 +88,7 @@ public class LdapClaimsHandlerManagerConfigMappingProvider implements ConfigMapp
     properties.put(GROUP_OBJECT_CLASS, ldapConfig.getGroupObjectClass());
     properties.put(GROUP_MEMBERSHIP_USER_ATTRIBUTE, ldapConfig.getGroupMembershipUserAttribute());
 
-    //defaults
+    // defaults
     properties.put(OVERRIDE_CERT_DN, OVERRIDE_CERT_DN_DEFAULT);
     properties.put(PROPERTY_FILE_LOCATION, PROPERTY_FILE_LOCATION_DEFAULT);
 
@@ -118,7 +119,7 @@ public class LdapClaimsHandlerManagerConfigMappingProvider implements ConfigMapp
     return id.getInstance()
         .orElseThrow(
             () ->
-                new ConfigMappingException(
+                new ConfigMappingUnavailableException(
                     String.format("No instance id for %s found in Config Mapping.", id)));
   }
 
@@ -127,7 +128,7 @@ public class LdapClaimsHandlerManagerConfigMappingProvider implements ConfigMapp
         .get(LdapConfig.class, instanceId)
         .orElseThrow(
             () ->
-                new ConfigMappingException(
+                new ConfigMappingUnavailableException(
                     "Unable to find config for ["
                         + LdapConfig.class
                         + "] with id ["
